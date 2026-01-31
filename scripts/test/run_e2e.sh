@@ -7,14 +7,14 @@ bash scripts/test/setup_iterm2_mock.sh
 
 echo "Testing core module..."
 pushd packages/cloudplayplus_core >/dev/null
-dart pub get
-dart test
+flutter pub get
+flutter test
 popd >/dev/null
 
 echo "Testing host module..."
 pushd packages/iterm2_host >/dev/null
-dart pub get
-dart test
+flutter pub get
+flutter test
 popd >/dev/null
 
 echo "Testing android client..."
@@ -24,4 +24,3 @@ flutter test
 popd >/dev/null
 
 echo "All E2E tests passed"
-

@@ -37,23 +37,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
 
       - name: Install dependencies
         run: |
           cd packages/cloudplayplus_core
-          dart pub get
+          flutter pub get
 
       - name: Run tests
         run: |
           cd packages/cloudplayplus_core
-          dart test
+          flutter test
 
       - name: Check coverage
         run: |
           cd packages/cloudplayplus_core
-          dart test --coverage=coverage
+          flutter test --coverage
 
   test-host:
     name: Test Host
@@ -62,24 +62,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
 
       - name: Install dependencies
         run: |
           cd packages/iterm2_host
-          dart pub get
+          flutter pub get
 
       - name: Run tests
         run: |
           cd packages/iterm2_host
-          dart test
+          flutter test
 
       - name: Mock iTerm2 tests
         run: |
           bash scripts/test/setup_iterm2_mock.sh
           cd packages/iterm2_host
-          dart test
+          flutter test
 
   test-android:
     name: Test Android Client
@@ -108,13 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
 
       - name: Run E2E tests
         run: |
           bash scripts/test/run_e2e.sh
-
