@@ -19,7 +19,47 @@ Has module-local tests.
 
 No documentation available.
 
+### lib/pages/chat_page.dart
+
+No documentation available.
+
+### lib/pages/connect_page.dart
+
+No documentation available.
+
+### lib/pages/streaming_page.dart
+
+No documentation available.
+
+### lib/widgets/chat/chat_history_view.dart
+
+No documentation available.
+
+### lib/widgets/chat/chat_input_field.dart
+
+No documentation available.
+
+### lib/widgets/streaming/panel_switcher.dart
+
+No documentation available.
+
+### lib/widgets/streaming/video_renderer.dart
+
+No documentation available.
+
 ### test/app_test.dart
+
+No documentation available.
+
+### test/pages/chat_page_test.dart
+
+No documentation available.
+
+### test/pages/connect_page_test.dart
+
+No documentation available.
+
+### test/pages/streaming_page_test.dart
 
 No documentation available.
 

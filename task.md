@@ -6,8 +6,8 @@
 ---
 
 
-- **当前阶段**: Phase 3 - Android Client Module
-- **总体进度**: 3/5 (60%)
+- **当前阶段**: Phase 4 - End-to-End Testing
+- **总体进度**: 4/5 (80%)
 - **CI 状态**: ✅ 通过
 - **上次更新**: 2026-01-31
 
@@ -19,8 +19,8 @@
 | Phase 0 | Infrastructure & Skeleton | ✅ 已完成 | 1 |
 | Phase 1 | Core Module | ✅ 已完成 | 1 |
 | Phase 2 | Host Module | ✅ 已完成 | 1 |
-| Phase 3 | Android Client Module | 🟨 进行中 | 0 |
-| Phase 4 | End-to-End Testing | ⬜ 未开始 | 0 |
+| Phase 3 | Android Client Module | ✅ 已完成 | 1 |
+| Phase 4 | End-to-End Testing | 🟨 进行中 | 0 |
 
 ---
 
@@ -344,8 +344,8 @@
 | M1 | 基础设施就绪 | ✅ | Phase 0 完成 |
 | M2 | Core 模块完成 | ✅ | Phase 1 完成 |
 | M3 | Host 模块完成 | ✅ | Phase 2 完成 |
-| M4 | Android 客户端完成 | ⬜ | Phase 3 完成 |
-| M5 | E2E 测试通过 | ⬜ | Phase 4 完成 |
+| M4 | Android 客户端完成 | ✅ | Phase 3 完成 |
+| M5 | E2E 测试通过 | 🟨 | Phase 4 完成 |
 
 ---
 
@@ -373,6 +373,11 @@
 
 ---
 
+
+### [0.3.0] - 2026-01-31
+- Phase 3 完成：Android 客户端基础结构（三个页面 + 四个 Widget）
+- Android 配置完成：minSdk 21, targetSdk 34, 网络权限
+- APK 构建成功，所有测试通过（4/4）
 
 ### [0.2.0] - 2026-01-31
 - Phase 0-2 基础闭环完成（CI/README/Build Gate/Core/Host）

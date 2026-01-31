@@ -5,8 +5,7 @@ void main() {
   testWidgets('App builds without crashing', (WidgetTester tester) async {
     await tester.pumpWidget(const ITerm2RemoteApp());
 
-    expect(find.text('iTerm2 Remote'), findsOneWidget);
-    expect(find.text('iTerm2 Remote Client'), findsOneWidget);
+    expect(find.text('Connect to Host'), findsOneWidget);
+    expect(find.text('Add Host'), findsOneWidget);
   });
 }
-
