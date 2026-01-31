@@ -23,4 +23,10 @@ flutter pub get
 flutter test
 popd >/dev/null
 
+echo "Testing integration suite..."
+pushd test/integration >/dev/null
+flutter pub get
+flutter test
+popd >/dev/null
+
 echo "All E2E tests passed"
