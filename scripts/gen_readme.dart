@@ -121,26 +121,28 @@ String _extractLeadingDocComment(String content) {
 }
 
 String _describeArchitecture(Directory moduleDir) {
-  final names = moduleDir
-      .listSync(recursive: false, followLinks: false)
-      .whereType<Directory>()
-      .map((d) => d.uri.pathSegments.where((s) => s.isNotEmpty).last)
-      .toSet();
-
   final parts = <String>[];
-  if (names.contains('lib')) parts.add('Dart/Flutter module with lib/.');
+
+  final libDir = Directory('${moduleDir.path}/lib');
+  if (libDir.existsSync()) {
+    parts.add('Dart/Flutter module with lib/.');
+  }
+
   if (Directory('${moduleDir.path}/lib/entities').existsSync()) {
     parts.add('Contains domain/entities definitions.');
   }
   if (Directory('${moduleDir.path}/lib/services').existsSync()) {
     parts.add('Contains service-layer logic.');
   }
+  // Prefer describing UI if lib/widgets exists, but also detect the common
+  // `lib/widgets/` placeholder being created later.
   if (Directory('${moduleDir.path}/lib/widgets').existsSync()) {
     parts.add('Contains UI widgets.');
   }
   if (Directory('${moduleDir.path}/test').existsSync()) {
     parts.add('Has module-local tests.');
   }
+
   if (parts.isEmpty) return 'Standard module structure.';
   return parts.join('\n');
 }
