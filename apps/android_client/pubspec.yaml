@@ -1,0 +1,19 @@
+name: android_client
+version: 0.1.0
+description: Android client for iTerm2 remote streaming
+publish_to: none
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+  flutter: '>=3.3.0'
+
+dependencies:
+  cloudplayplus_core:
+    path: ../../packages/cloudplayplus_core
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.4.4

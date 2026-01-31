@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-gate:
+    name: Build Gate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Check for untracked files
+        run: |
+          bash scripts/ci/check_untracked.sh
+
+      - name: Generate READMEs
+        run: |
+          bash scripts/gen_readme.sh
+
+      - name: Check README freshness
+        run: |
+          bash scripts/ci/check_readme_fresh.sh
+
+  test-core:
+    name: Test Core
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: |
+          cd packages/cloudplayplus_core
+          dart pub get
+
+      - name: Run tests
+        run: |
+          cd packages/cloudplayplus_core
+          dart test
+
+      - name: Check coverage
+        run: |
+          cd packages/cloudplayplus_core
+          dart test --coverage=coverage
+
+  test-host:
+    name: Test Host
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: |
+          cd packages/iterm2_host
+          dart pub get
+
+      - name: Run tests
+        run: |
+          cd packages/iterm2_host
+          dart test
+
+      - name: Mock iTerm2 tests
+        run: |
+          bash scripts/test/setup_iterm2_mock.sh
+          cd packages/iterm2_host
+          dart test
+
+  test-android:
+    name: Test Android Client
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Install dependencies
+        run: |
+          cd apps/android_client
+          flutter pub get
+
+      - name: Run tests
+        run: |
+          cd apps/android_client
+          flutter test
+
+  e2e-test:
+    name: End-to-End Test
+    runs-on: macos-latest
+    needs: [test-core, test-host]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Run E2E tests
+        run: |
+          bash scripts/test/run_e2e.sh
+
