@@ -379,6 +379,14 @@
 - E2E 脚本跑通全链路（unit + integration）
 - 所有测试通过（24/24）
 
+### [0.5.0] - 2026-01-31
+- WebRTC 实时编码策略模块完成（多 Profile 支持）
+- 三种预设策略：textLatency（文字优先低延迟）/balanced（平衡）/textQuality（文字清晰优先）
+- 动态参数调整：maxBitrate/maxFramerate/scaleResolutionDownBy/degradationPreference/scalabilityMode
+- 独立可更新子模块：packages/iterm2_host/lib/webrtc/encoding_policy/
+- 单元测试覆盖：EncodingPolicyEngine 状态机与 Profile 决策
+- 目标：维持 15-30fps，黑底白字场景优化（contentHint=text）
+
 ### [0.3.0] - 2026-01-31
 - Phase 3 完成：Android 客户端基础结构（三个页面 + 四个 Widget）
 - Android 配置完成：minSdk 21, targetSdk 34, 网络权限
