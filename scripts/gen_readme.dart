@@ -13,6 +13,8 @@ void main(List<String> args) {
     exit(2);
   }
 
+  _ensureOptionalFiles(moduleDir);
+
   final moduleName = moduleDir.uri.pathSegments.isNotEmpty
       ? moduleDir.uri.pathSegments
           .where((s) => s.isNotEmpty)
@@ -79,6 +81,22 @@ Map<String, String> _scanDartFiles(Directory moduleDir) {
   }
   final keys = out.keys.toList()..sort();
   return {for (final k in keys) k: out[k]!};
+}
+
+void _ensureOptionalFiles(Directory moduleDir) {
+  // These files are optional for content, but required for stable README
+  // generation and to encourage consistent documentation habits.
+  const names = <String>[
+    'DEBUG_NOTES.md',
+    'ERROR_LOG.md',
+    'UPDATE_HISTORY.md',
+  ];
+  for (final name in names) {
+    final f = File('${moduleDir.path}/$name');
+    if (!f.existsSync()) {
+      f.writeAsStringSync('');
+    }
+  }
 }
 
 String _relativePath(String root, String full) {
@@ -155,4 +173,3 @@ String _defaultHistory() {
       '- CI gates enabled\n'
       '- Placeholder implementation\n';
 }
-
