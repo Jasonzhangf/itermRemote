@@ -6,6 +6,9 @@ class ITerm2SessionInfo {
   final int index;
   final Map<String, double>? frame;
   final Map<String, double>? windowFrame;
+  final int? windowNumber;
+  /// CGWindowID used by ScreenCaptureKit for direct window capture (macOS).
+  final int? cgWindowId;
 
   const ITerm2SessionInfo({
     required this.sessionId,
@@ -14,6 +17,8 @@ class ITerm2SessionInfo {
     required this.index,
     this.frame,
     this.windowFrame,
+    this.windowNumber,
+    this.cgWindowId,
   });
 
   factory ITerm2SessionInfo.fromJson(Map<String, dynamic> json) {
@@ -24,6 +29,12 @@ class ITerm2SessionInfo {
       index: json['index'] as int,
       frame: _parseRect(json['frame']),
       windowFrame: _parseRect(json['windowFrame']),
+      windowNumber: (json['windowId'] is num)
+          ? (json['windowId'] as num).toInt()
+          : null,
+      cgWindowId: (json['cgWindowId'] is num)
+          ? (json['cgWindowId'] as num).toInt()
+          : null,
     );
   }
 
@@ -35,6 +46,8 @@ class ITerm2SessionInfo {
       'index': index,
       if (frame != null) 'frame': frame,
       if (windowFrame != null) 'windowFrame': windowFrame,
+      if (windowNumber != null) 'windowId': windowNumber,
+      if (cgWindowId != null) 'cgWindowId': cgWindowId,
     };
   }
 
@@ -49,4 +62,3 @@ class ITerm2SessionInfo {
     return out.isEmpty ? null : out;
   }
 }
-

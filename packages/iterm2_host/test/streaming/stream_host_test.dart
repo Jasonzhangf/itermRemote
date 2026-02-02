@@ -1,11 +1,9 @@
 import 'package:cloudplayplus_core/cloudplayplus_core.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:iterm2_host/streaming/stream_host.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
   group('StreamHost', () {
     test('initialize loads sessions and sets state to ready', () async {
       final bridge = _FakeBridge(okSessions: const [

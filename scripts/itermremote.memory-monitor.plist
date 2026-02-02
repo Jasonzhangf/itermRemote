@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.itermremote.memory-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/python3</string>
+      <string>/Users/fanzhang/Documents/github/itermRemote/scripts/monitor_memory.py</string>
+      <string>run</string>
+      <string>--target</string>
+      <string>host_test_app</string>
+      <string>--interval</string>
+      <string>5</string>
+      <string>--threshold</string>
+      <string>2048</string>
+      <string>--state-dir</string>
+      <string>/tmp/itermremote-memory-monitor</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/itermremote-memory-monitor/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/itermremote-memory-monitor/launchd.err.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+  </dict>
+</plist>

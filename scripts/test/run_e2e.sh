@@ -14,11 +14,17 @@ popd >/dev/null
 echo "Testing host module..."
 pushd packages/iterm2_host >/dev/null
 flutter pub get
-flutter test
+ITERMREMOTE_ITERM2_MOCK=1 flutter test
 popd >/dev/null
 
 echo "Testing android client..."
 pushd apps/android_client >/dev/null
+flutter pub get
+flutter test
+popd >/dev/null
+
+echo "Testing host console..."
+pushd apps/host_console >/dev/null
 flutter pub get
 flutter test
 popd >/dev/null

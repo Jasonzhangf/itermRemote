@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('ITerm2Bridge (mock scripts)', () {
     late ITerm2Bridge bridge;
+
+    // Note: CI sets ITERMREMOTE_ITERM2_MOCK=1 before running tests.
 
     setUp(() {
       bridge = ITerm2Bridge();
@@ -19,6 +23,7 @@ void main() {
     test('activateSession returns metadata', () async {
       final meta = await bridge.activateSession('session-1');
       expect(meta['sessionId'], 'session-1');
+      // Mock script provides a stable windowId placeholder.
       expect(meta['windowId'], 12345);
       expect(meta['frame'], isNotNull);
       expect(meta['windowFrame'], isNotNull);
@@ -36,4 +41,3 @@ void main() {
     });
   });
 }
-

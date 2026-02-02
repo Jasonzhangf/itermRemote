@@ -63,6 +63,12 @@ No documentation available.
 
 No documentation available.
 
+## User Notes
+
+<!-- USER -->
+
+<!-- /USER -->
+
 ## Debug Notes
 
 No debug notes documented yet.

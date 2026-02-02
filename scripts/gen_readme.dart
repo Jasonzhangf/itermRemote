@@ -27,6 +27,7 @@ void main(List<String> args) {
   final debugNotes = _readOptional(moduleDir, 'DEBUG_NOTES.md');
   final errorLog = _readOptional(moduleDir, 'ERROR_LOG.md');
   final updateHistory = _readOptional(moduleDir, 'UPDATE_HISTORY.md');
+  final userSection = _readUserSection(moduleDir);
 
   final b = StringBuffer();
   b.writeln('# $moduleName');
@@ -47,6 +48,10 @@ void main(List<String> args) {
     b.writeln('### ${entry.key}');
     b.writeln('');
     b.writeln(entry.value.isEmpty ? 'No documentation available.' : entry.value);
+    b.writeln('');
+  }
+  if (userSection.isNotEmpty) {
+    b.writeln(userSection.trimRight());
     b.writeln('');
   }
   b.writeln('## Debug Notes');
@@ -151,6 +156,41 @@ String _readOptional(Directory moduleDir, String filename) {
   final f = File('${moduleDir.path}/$filename');
   if (!f.existsSync()) return '';
   return f.readAsStringSync().trim();
+}
+
+/// Preserve user-editable section inside README.md.
+///
+/// The section is defined by:
+///   <!-- USER -->
+///   ...
+///   <!-- /USER -->
+///
+/// If no markers exist, return a default empty user section template.
+String _readUserSection(Directory moduleDir) {
+  final readme = File('${moduleDir.path}/README.md');
+  if (!readme.existsSync()) {
+    return _defaultUserSection();
+  }
+
+  final content = readme.readAsStringSync();
+  final start = '<!-- USER -->';
+  final end = '<!-- /USER -->';
+  final startIndex = content.indexOf(start);
+  final endIndex = content.indexOf(end);
+
+  if (startIndex == -1 || endIndex == -1 || endIndex < startIndex) {
+    return _defaultUserSection();
+  }
+
+  final section = content.substring(startIndex, endIndex + end.length);
+  return section.trimRight();
+}
+
+String _defaultUserSection() {
+  return '## User Notes\n\n'
+      '<!-- USER -->\n'
+      '\n'
+      '<!-- /USER -->\n';
 }
 
 String _moduleDescription(String moduleName) {

@@ -1,98 +1,54 @@
-# iTerm2 Remote Streaming Service - Task Tracking
+# iTermRemote - Task Tracking
 
-> **项目目标**: 创建独立的 WebRTC 串流服务，支持 iTerm2 深度集成，提供视频串流和纯聊天两种模式。
-> **开发原则**: 从小开始构建，每个模块基础版本通过测试后才提交，CI 门禁阻止未跟踪文件和过时 README。
-
----
-
-
-- **当前阶段**: Phase 4 - End-to-End Testing (COMPLETED)
-- **总体进度**: 5/5 (100%)
-- **CI 状态**: ✅ 通过
-- **上次更新**: 2026-01-31
+> **项目目标**: 把 Host 能力重构为可常驻的系统服务（daemon），通过 WebSocket 控制与状态广播驱动各功能 block；UI 只做呈现与操作。
+> **开发原则**: 从小开始构建；新增功能必须有单测；可做 E2E 的必须做一次端到端；CI 门禁阻止未跟踪文件与过时 README。
 
 ---
 
 
-| 阶段 | 名称 | 状态 | 提交数 |
-|------|------|------|--------|
-| Phase 0 | Infrastructure & Skeleton | ✅ 已完成 | 1 |
-| Phase 1 | Core Module | ✅ 已完成 | 1 |
-| Phase 2 | Host Module | ✅ 已完成 | 1 |
-| Phase 3 | Android Client Module | ✅ 已完成 | 1 |
-| Phase 4 | End-to-End Testing | ✅ 已完成 | 1 |
+- **当前阶段**: Phase D - Host Daemon + Blocks + WS (IN PROGRESS)
+- **CI 状态**: ✅ 通过（以当前 main 分支为准）
+- **上次更新**: 2026-02-02
 
 ---
 
 
-### 目标
-建立项目骨架、CI 配置、构建门禁和 README 生成系统。
+| 阶段 | 名称 | 状态 |
+|------|------|------|
+| Phase A | Protocol + Blocks 基础设施 | 🔄 进行中 |
+| Phase B | host_daemon 骨架 + WS server + headless 模式 | 🔄 进行中 |
+| Phase C | Core Blocks 迁移（iTerm2/Capture/WebRTC/Verify） | ⏳ 待开始 |
+| Phase D | host_console 变薄（WS client + 呈现） | ⏳ 待开始 |
 
-### 检查清单
+---
 
-- [ ] 创建目录结构
-  - [ ] `packages/cloudplayplus_core/lib/{entities,services,utils}`
-  - [ ] `packages/iterm2_host/lib/{iterm2,streaming,config}`
-  - [ ] `apps/android_client/lib/{pages,widgets,services}`
-  - [ ] `scripts/{ci,test,python}`
-  - [ ] `test/{unit,integration,e2e}`
-  - [ ] `docs`
+## 当前迭代目标（Daemon + Blocks + WS）
 
-- [ ] 创建 CI 配置
-  - [ ] `.github/workflows/ci.yml`
-    - [ ] build-gate job
-    - [ ] test-core job
-    - [ ] test-host job
-    - [ ] test-android job
-    - [ ] e2e-test job
+### Phase A - Protocol + Blocks
+- [ ] 新建 `packages/itermremote_protocol`（Cmd/Ack/Evt + version=1 + 单测）
+- [ ] 新建 `packages/itermremote_blocks`（Block 接口 + Registry + EventBus + 单测）
 
-- [ ] 创建构建门禁脚本
-  - [ ] `scripts/ci/check_untracked.sh`
-  - [ ] `scripts/ci/check_readme_fresh.sh`
+### Phase B - host_daemon 骨架
+- [ ] 新建 `apps/host_daemon`（Flutter macOS runner）
+- [ ] headless 模式（`ITERMREMOTE_HEADLESS=1` 隐藏窗口，不抢焦点）
+- [ ] WS server 单端口（默认 `127.0.0.1:8765`）
+- [ ] 提供 orchestrator 基础命令：`subscribe/getState`
 
-- [ ] 创建 README 生成脚本
-  - [ ] `scripts/gen_readme.sh` (bash wrapper)
-  - [ ] `scripts/gen_readme.dart` (Dart implementation)
+### Phase C - 业务 blocks 迁移（验收点：裁切宽度正确）
+- [ ] ITerm2Block：panel list + activate + crop meta
+- [ ] CaptureBlock：window/source 选择 + crop 应用
+- [ ] WebRTCBlock：loopback
+- [ ] VerifyBlock：截图证据采集 + 裁切验证
 
-- [ ] 创建骨架脚本
-  - [ ] `scripts/setup_skeleton.sh`
-  - [ ] `scripts/test/setup_iterm2_mock.sh`
-  - [ ] `scripts/test/run_e2e.sh`
+### Phase D - host_console 变薄
+- [ ] host_console 变为 WS client
+- [ ] UI 展示两种模式：连接 headless daemon / UI daemon
 
-- [ ] 创建占位文件
-  - [ ] `packages/cloudplayplus_core/lib/cloudplayplus_core.dart`
-  - [ ] `packages/iterm2_host/lib/main.dart`
-  - [ ] `apps/android_client/lib/main.dart`
 
-- [ ] 创建 pubspec.yaml 文件
-  - [ ] `packages/cloudplayplus_core/pubspec.yaml`
-  - [ ] `packages/iterm2_host/pubspec.yaml`
-  - [ ] `apps/android_client/pubspec.yaml`
-
-- [ ] 创建测试占位
-  - [ ] `packages/cloudplayplus_core/test/core_test.dart`
-  - [ ] `packages/iterm2_host/test/host_test.dart`
-  - [ ] `apps/android_client/test/client_test.dart`
-
-- [ ] 创建 .gitignore
-
-- [ ] 生成初始 README 文件
-  - [ ] `packages/cloudplayplus_core/README.md`
-  - [ ] `packages/iterm2_host/README.md`
-  - [ ] `apps/android_client/README.md`
-
-- [ ] 运行测试并验证 CI
-  - [ ] `bash scripts/test/run_e2e.sh`
-  - [ ] 推送到 GitHub 并等待 CI 通过
-
-### 验收标准
-- [ ] 所有脚本可执行
-- [ ] CI 配置正确，能检测未跟踪文件
-- [ ] README 生成后与提交版本一致
-- [ ] 所有占位文件存在且能通过基础检查
-
-### 完成时间估算
-2-3 小时
+## 验收标准（本轮重构）
+- [ ] `packages/itermremote_protocol` / `packages/itermremote_blocks` 单测全绿
+- [ ] `apps/host_daemon` headless 模式运行时无 UI 干扰，WS 可控
+- [ ] E2E：切换 iTerm2 panel -> loopback -> crop -> 截图验证通过
 
 ---
 
@@ -414,3 +370,24 @@
 - [iTerm2 Python API](https://iterm2.com/python-api/) - iTerm2 API 文档
 - [flutter_webrtc](https://github.com/flutter-webrtc/flutter-webrtc) - WebRTC Flutter 插件
 - [GitHub Actions](https://docs.github.com/en/actions) - CI/CD 文档
+
+---
+
+## 当前执行：保活 + 崩溃原因抓取
+
+### 已完成
+- [x] 确认 main.dart 中已有 crashLog、heartbeat、runZonedGuarded、FlutterError.onError
+- [x] 确认 WsServer 中已有端口冲突自动清理逻辑
+- [x] 创建 launchd plist 配置文件
+
+### 发现的问题
+1. **日志文件未更新**：/tmp/itermremote-host-daemon/stdout.log 和 stderr.log 显示的是旧进程（16:15）的日志
+2. **heartbeat 文件缺失**：说明 runZonedGuarded 内的 Timer.periodic 没有执行
+3. **WS 端口未监听**：8766 端口一直显示为 not in use，说明 wsServer.start() 未被执行或失败
+4. **crash 文件缺失**：说明没有异常被捕获，可能是进程被系统直接杀掉
+
+### 下一步
+- [x] 创建 launchd plist 配置
+- [ ] 加载 launchd 服务
+- [ ] 验证服务启动并查看日志
+- [ ] 如果仍然失败，添加更详细的日志输出

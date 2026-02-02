@@ -92,8 +92,6 @@ class EncodingPolicyEngine {
 
     final maxBitrate = _capBitrate(ctx.availableBitrateKbps,
         headroomKbps: _state == PolicyState.congested ? 100 : 200);
-
-    final svc = _svcForState(preferTemporal: true);
     final fps = _fpsForState(targetFps, preferFps: true);
 
     return EncodingDecision(
@@ -102,7 +100,6 @@ class EncodingPolicyEngine {
       maxBitrateKbps: maxBitrate,
       maxFramerate: fps,
       scaleResolutionDownBy: scale,
-      scalabilityMode: svc,
     );
   }
 
@@ -118,8 +115,6 @@ class EncodingPolicyEngine {
 
     final maxBitrate = _capBitrate(ctx.availableBitrateKbps,
         headroomKbps: _state == PolicyState.congested ? 80 : 150);
-
-    final svc = _svcForState(preferTemporal: true);
     final fps = _fpsForState(targetFps, preferFps: false);
 
     return EncodingDecision(
@@ -128,7 +123,6 @@ class EncodingPolicyEngine {
       maxBitrateKbps: maxBitrate,
       maxFramerate: fps,
       scaleResolutionDownBy: scale,
-      scalabilityMode: svc,
     );
   }
 
@@ -142,7 +136,6 @@ class EncodingPolicyEngine {
         preferReadability: true);
     final maxBitrate = _capBitrate(ctx.availableBitrateKbps,
         headroomKbps: _state == PolicyState.congested ? 100 : 180);
-    final svc = _svcForState(preferTemporal: true);
     final fps = _fpsForState(targetFps, preferFps: true);
 
     return EncodingDecision(
@@ -151,7 +144,6 @@ class EncodingPolicyEngine {
       maxBitrateKbps: maxBitrate,
       maxFramerate: fps,
       scaleResolutionDownBy: scale,
-      scalabilityMode: svc,
     );
   }
 
@@ -190,17 +182,7 @@ class EncodingPolicyEngine {
     return targetFps;
   }
 
-  String _svcForState({required bool preferTemporal}) {
-    // Prefer temporal scalability for smoothness.
-    if (!preferTemporal) return 'L1T1';
-    switch (_state) {
-      case PolicyState.congested:
-        return 'L1T2';
-      case PolicyState.recovering:
-        return 'L1T2';
-      case PolicyState.stable:
-      default:
-        return 'L1T3';
-    }
-  }
+  // NOTE: SVC (scalabilityMode) is intentionally not used.
+  // Rationale: hardware encoders often do not support SVC reliably across
+  // platforms; we focus on bitrate/fps/scale + degradationPreference.
 }

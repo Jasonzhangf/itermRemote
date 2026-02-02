@@ -3,7 +3,7 @@ set -e
 
 # Generate README.md for each module. CI will verify the output is committed.
 
-MODULES=("packages/cloudplayplus_core" "packages/iterm2_host" "apps/android_client")
+MODULES=("packages/cloudplayplus_core" "packages/iterm2_host" "apps/android_client" "apps/host_console")
 
 for module in "${MODULES[@]}"; do
   if [ -d "$module" ]; then
@@ -13,4 +13,3 @@ for module in "${MODULES[@]}"; do
 done
 
 echo "README generation done"
-

@@ -47,9 +47,6 @@ class EncodingDecision {
   /// Degradation preference: 'maintain-framerate', 'maintain-resolution', 'balanced'.
   final String? degradationPreference;
 
-  /// SVC scalability mode: 'L1T1', 'L1T2', 'L1T3', etc.
-  final String? scalabilityMode;
-
   /// Content hint: 'text', 'detail', 'motion', 'speech', 'music', 'film'.
   final String? contentHint;
 
@@ -58,7 +55,6 @@ class EncodingDecision {
     this.maxFramerate,
     this.scaleResolutionDownBy,
     this.degradationPreference,
-    this.scalabilityMode,
     this.contentHint,
   });
 
@@ -68,7 +64,6 @@ class EncodingDecision {
       if (maxBitrateKbps != null) 'maxBitrate': maxBitrateKbps! * 1000,
       if (maxFramerate != null) 'maxFramerate': maxFramerate!,
       if (scaleResolutionDownBy != null) 'scaleResolutionDownBy': scaleResolutionDownBy!,
-      if (scalabilityMode != null) 'scalabilityMode': scalabilityMode!,
     };
   }
 
@@ -81,7 +76,7 @@ class EncodingDecision {
 
   @override
   String toString() {
-    return 'EncodingDecision(maxBitrate=$maxBitrateKbps, maxFps=$maxFramerate, scale=$scaleResolutionDownBy, degrad=$degradationPreference, svc=$scalabilityMode, hint=$contentHint)';
+    return 'EncodingDecision(maxBitrate=$maxBitrateKbps, maxFps=$maxFramerate, scale=$scaleResolutionDownBy, degrad=$degradationPreference, hint=$contentHint)';
   }
 }
 

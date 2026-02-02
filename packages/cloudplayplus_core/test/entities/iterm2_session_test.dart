@@ -9,11 +9,15 @@ void main() {
         'title': '1.1.1',
         'detail': 'bash',
         'index': 3,
+        'windowId': 1,
+        'cgWindowId': 99,
       });
       expect(s.sessionId, 'sess-1');
       expect(s.title, '1.1.1');
       expect(s.detail, 'bash');
       expect(s.index, 3);
+      expect(s.windowNumber, 1);
+      expect(s.cgWindowId, 99);
       expect(s.frame, isNull);
       expect(s.windowFrame, isNull);
     });
@@ -26,6 +30,8 @@ void main() {
         'index': 0,
         'frame': {'x': 1, 'y': 2.5, 'w': 3, 'h': 4},
         'windowFrame': {'x': 0, 'y': 0, 'w': 800, 'h': 600},
+        'windowId': 2,
+        'cgWindowId': 1234,
       });
       expect(s.frame, isNotNull);
       expect(s.frame!['x'], 1.0);
@@ -33,6 +39,8 @@ void main() {
       expect(s.frame!['w'], 3.0);
       expect(s.frame!['h'], 4.0);
       expect(s.windowFrame!['w'], 800.0);
+      expect(s.windowNumber, 2);
+      expect(s.cgWindowId, 1234);
     });
 
     test('toJson roundtrips', () {
@@ -43,6 +51,8 @@ void main() {
         index: 9,
         frame: const {'x': 1.0, 'y': 2.0, 'w': 3.0, 'h': 4.0},
         windowFrame: const {'x': 0.0, 'y': 0.0, 'w': 10.0, 'h': 20.0},
+        windowNumber: 7,
+        cgWindowId: 4321,
       );
       final json = original.toJson();
       final restored = ITerm2SessionInfo.fromJson(json);
@@ -52,7 +62,8 @@ void main() {
       expect(restored.index, original.index);
       expect(restored.frame, original.frame);
       expect(restored.windowFrame, original.windowFrame);
+      expect(restored.windowNumber, original.windowNumber);
+      expect(restored.cgWindowId, original.cgWindowId);
     });
   });
 }
-

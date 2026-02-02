@@ -9,12 +9,8 @@ environment:
 dependencies:
   cloudplayplus_core:
     path: ../cloudplayplus_core
-  flutter:
-    sdk: flutter
-  flutter_webrtc: ^0.9.48
+  meta: ^1.12.0
 
 dev_dependencies:
   test: ^1.26.0
   mockito: ^5.4.4
-  flutter_test:
-    sdk: flutter

@@ -35,6 +35,27 @@ Streaming mode: video (real-time capture) or chat (text buffer).
 
 No documentation available.
 
+### lib/iterm2/iterm2_crop.dart
+
+Best-effort crop computation for an iTerm2 session (panel) inside its parent
+window.
+
+Inputs are the raw `frame` (session) and `windowFrame` values returned by
+iTerm2's Python API.
+
+The function evaluates multiple coordinate hypotheses and returns the one
+with the lowest overflow/clamp penalty.
+
+Returns `null` when the provided geometry is unusable.
+
+### lib/network/device_id.dart
+
+No documentation available.
+
+### lib/network/ipv6_address_book.dart
+
+No documentation available.
+
 ### test/entities/capture_target_test.dart
 
 No documentation available.
@@ -50,6 +71,24 @@ No documentation available.
 ### test/entities/stream_settings_test.dart
 
 No documentation available.
+
+### test/iterm2/iterm2_crop_test.dart
+
+No documentation available.
+
+### test/network/device_id_test.dart
+
+No documentation available.
+
+### test/network/ipv6_address_book_test.dart
+
+No documentation available.
+
+## User Notes
+
+<!-- USER -->
+
+<!-- /USER -->
 
 ## Debug Notes
 

@@ -44,6 +44,13 @@
 
 2. 只有 CI 全绿的 commit 才允许合并。
 
+## 运行时监控规则（强制）
+
+1. 内存监控必须作为系统级常驻服务运行（launchd）。禁止依赖 wrapper 脚本来启动监控。
+2. 监控服务配置模板：`scripts/itermremote.memory-monitor.plist`。
+3. 默认监控脚本：`scripts/monitor_memory.py`，默认目标进程名：`host_test_app`。
+4. 日志/状态文件必须写入可写目录（推荐 `/tmp/itermremote-memory-monitor` 或通过 `--state-dir` 指定）。
+
 ## 模块交付规则
 
 1. 模块必须按阶段交付：
@@ -69,4 +76,3 @@
 
 3. **测试与功能绑定**：
    - 功能实现与测试必须在同一提交中出现
-

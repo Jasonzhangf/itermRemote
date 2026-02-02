@@ -73,13 +73,13 @@ jobs:
       - name: Run tests
         run: |
           cd packages/iterm2_host
-          flutter test
+          dart test
 
       - name: Mock iTerm2 tests
         run: |
           bash scripts/test/setup_iterm2_mock.sh
           cd packages/iterm2_host
-          flutter test
+          dart test
 
   test-android:
     name: Test Android Client
@@ -101,10 +101,30 @@ jobs:
           cd apps/android_client
           flutter test
 
+  test-host-console:
+    name: Test Host Console
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Install dependencies
+        run: |
+          cd apps/host_console
+          flutter pub get
+
+      - name: Run tests
+        run: |
+          cd apps/host_console
+          flutter test
+
   e2e-test:
     name: End-to-End Test
     runs-on: macos-latest
-    needs: [test-core, test-host]
+    needs: [test-core, test-host, test-host-console]
     steps:
       - uses: actions/checkout@v4
 

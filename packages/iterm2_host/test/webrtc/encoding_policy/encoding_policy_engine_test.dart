@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:iterm2_host/webrtc/encoding_policy/encoding_policy.dart';
 
 void main() {
@@ -19,7 +19,6 @@ void main() {
       expect(stable.maxFramerate, 30);
       expect(stable.scaleResolutionDownBy, 1.0);
       expect(stable.contentHint, 'text');
-      expect(stable.scalabilityMode, 'L1T3');
 
       final congested = engine.decide(
         const EncodingContext(
@@ -34,7 +33,6 @@ void main() {
       expect(engine.state, PolicyState.congested);
       expect(congested.maxFramerate, lessThanOrEqualTo(24));
       expect(congested.scaleResolutionDownBy, greaterThan(1.0));
-      expect(congested.scalabilityMode, 'L1T2');
     });
 
     test('text_quality profile prefers maintain-resolution and drops fps earlier',
@@ -111,7 +109,6 @@ void main() {
         maxBitrateKbps: 500,
         maxFramerate: 20,
         scaleResolutionDownBy: 1.5,
-        scalabilityMode: 'L1T2',
         degradationPreference: 'maintain-framerate',
       );
 
@@ -119,11 +116,9 @@ void main() {
       expect(enc['maxBitrate'], 500000);
       expect(enc['maxFramerate'], 20);
       expect(enc['scaleResolutionDownBy'], 1.5);
-      expect(enc['scalabilityMode'], 'L1T2');
 
       final sender = decision.toRtpSenderParams();
       expect(sender['degradationPreference'], 'maintain-framerate');
     });
   });
 }
-
