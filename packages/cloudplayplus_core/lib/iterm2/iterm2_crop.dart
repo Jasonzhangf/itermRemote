@@ -1,13 +1,16 @@
 /// Best-effort crop computation for an iTerm2 session (panel) inside its parent
 /// window.
 ///
-/// Inputs are the raw `frame` (session) and `windowFrame` values returned by
-/// iTerm2's Python API.
+/// This implementation is copied from `cloudplayplus_stone` (reference project)
+/// because it already handles the macOS ScreenCaptureKit coordinate quirks
+/// robustly:
+/// - non-uniform pane layout (2x5 / mixed widths/heights)
+/// - window vs content coordinate spaces
+/// - Retina scale / raw window frame mismatches
 ///
-/// The function evaluates multiple coordinate hypotheses and returns the one
-/// with the lowest overflow/clamp penalty.
-///
-/// Returns `null` when the provided geometry is unusable.
+/// The output cropRectNorm is normalized [0..1] in *captured frame* coordinates
+/// (origin top-left), which matches the ScreenCaptureKit crop pipeline.
+
 class Iterm2CropComputationResult {
   final Map<String, double> cropRectNorm;
   final String tag;
@@ -38,7 +41,6 @@ Iterm2CropComputationResult? computeIterm2CropRectNorm({
 
   double clamp01(double v) => v.clamp(0.0, 1.0);
 
-  // Bounds in pixels.
   final wPx = fw.clamp(1.0, ww);
   final hPx = fh.clamp(1.0, wh);
 
@@ -58,21 +60,23 @@ Iterm2CropComputationResult? computeIterm2CropRectNorm({
   }
 
   final candidates = <({double left, double top, String tag})>[
-    // Doc-based: origin bottom-right, X left, Y up => window - session.
     (left: wx - fx, top: wy - fy, tag: 'doc: wx-fx, wy-fy'),
-    // Standard top-left coords: session - window.
     (left: fx - wx, top: fy - wy, tag: 'rel: fx-wx, fy-wy'),
-    // Y from bottom.
-    (left: fx - wx, top: (wy + wh) - (fy + fh), tag: 'rel: fx-wx, topFromBottom'),
-    // X from right edge.
-    (left: (wx + ww) - (fx + fw), top: fy - wy, tag: 'alt: leftFromRight, fy-wy'),
+    (
+      left: fx - wx,
+      top: (wy + wh) - (fy + fh),
+      tag: 'rel: fx-wx, topFromBottom'
+    ),
+    (
+      left: (wx + ww) - (fx + fw),
+      top: fy - wy,
+      tag: 'alt: leftFromRight, fy-wy'
+    ),
     (
       left: (wx + ww) - (fx + fw),
       top: (wy + wh) - (fy + fh),
       tag: 'alt: leftFromRight, topFromBottom'
     ),
-    // Some iTerm2 builds appear to return Session.frame already relative to its
-    // window.
     (left: fx, top: fy, tag: 'winRel: fx, fy'),
     (left: fx, top: wh - (fy + fh), tag: 'winRel: fx, topFromBottom'),
     (left: ww - (fx + fw), top: fy, tag: 'winRel: leftFromRight, fy'),
@@ -210,7 +214,7 @@ Iterm2CropComputationResult? computeIterm2CropRectNormBestEffort({
     return a;
   }
 
-  // Hypothesis: iTerm2 frame/windowFrame already in raw-window coords.
+  // Hypothesis 1: iTerm2 already returns everything in raw-window coordinates.
   best = pick(
     best,
     computeIterm2CropRectNorm(
@@ -218,13 +222,93 @@ Iterm2CropComputationResult? computeIterm2CropRectNormBestEffort({
       fy: fy,
       fw: fw,
       fh: fh,
-      wx: rawWx ?? wx,
-      wy: rawWy ?? wy,
+      wx: rawWx ?? 0.0,
+      wy: rawWy ?? 0.0,
       ww: rawWw,
       wh: rawWh,
-    ),
+    )?.letTagPrefix('rawWin'),
   );
+
+  // Hypothesis 1b: pane + window frames are in points, raw window is in pixels.
+  // Scale the pane + window coordinates into raw units, then compute crop.
+  if (ww > 0 && wh > 0) {
+    final sx = rawWw / ww;
+    final sy = rawWh / wh;
+    if ((sx - 1.0).abs() >= 0.01 || (sy - 1.0).abs() >= 0.01) {
+      best = pick(
+        best,
+        computeIterm2CropRectNorm(
+          fx: fx * sx,
+          fy: fy * sy,
+          fw: fw * sx,
+          fh: fh * sy,
+          wx: (rawWx ?? (wx * sx)),
+          wy: (rawWy ?? (wy * sy)),
+          ww: rawWw,
+          wh: rawWh,
+        )?.letTagPrefix('rawScaled'),
+      );
+    }
+  }
+
+  // Hypothesis 2: map content coords into raw window by inferring insets.
+  final relX = fx - wx;
+  final relY = fy - wy;
+  final inferredScales = <double>{1.0};
+  if (ww > 0 && wh > 0) {
+    final sx = rawWw / ww;
+    final sy = rawWh / wh;
+    if ((sx - 2.0).abs() < 0.35 || (sy - 2.0).abs() < 0.35) {
+      inferredScales.add(2.0);
+    }
+    if ((sx - 0.5).abs() < 0.18 || (sy - 0.5).abs() < 0.18) {
+      inferredScales.add(0.5);
+    }
+  }
+
+  for (final scale in inferredScales) {
+    final contentW = ww * scale;
+    final contentH = wh * scale;
+    final paneW = fw * scale;
+    final paneH = fh * scale;
+    final paneX = relX * scale;
+    final paneY = relY * scale;
+
+    final dx = (rawWw - contentW);
+    final dy = (rawWh - contentH);
+    final offsetXs = <double>[0.0, if (dx.isFinite) dx * 0.5, if (dx.isFinite) dx];
+    final offsetYs = <double>[0.0, if (dy.isFinite) dy, if (dy.isFinite) dy * 0.5];
+
+    for (final ox in offsetXs) {
+      for (final oy in offsetYs) {
+        best = pick(
+          best,
+          computeIterm2CropRectNorm(
+            fx: paneX + ox,
+            fy: paneY + oy,
+            fw: paneW,
+            fh: paneH,
+            wx: 0.0,
+            wy: 0.0,
+            ww: rawWw,
+            wh: rawWh,
+          )?.letTagPrefix('map(s=$scale,ox=${ox.toStringAsFixed(1)},oy=${oy.toStringAsFixed(1)})'),
+        );
+      }
+    }
+  }
 
   return best;
 }
 
+extension on Iterm2CropComputationResult {
+  Iterm2CropComputationResult letTagPrefix(String prefix) {
+    return Iterm2CropComputationResult(
+      cropRectNorm: cropRectNorm,
+      tag: '$prefix:$tag',
+      penalty: penalty,
+      windowMinWidth: windowMinWidth,
+      windowMinHeight: windowMinHeight,
+    );
+  }
+}

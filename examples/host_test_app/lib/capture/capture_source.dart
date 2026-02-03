@@ -36,6 +36,7 @@ class Iterm2PanelItem {
   final String sessionId;
   final String title;
   final String detail;
+  final int? cgWindowId;
   final Map<String, double>? cropRectNorm;
   final String? windowSourceId;
   final Uint8List? windowThumbnail;
@@ -44,6 +45,7 @@ class Iterm2PanelItem {
     required this.sessionId,
     required this.title,
     required this.detail,
+    required this.cgWindowId,
     required this.cropRectNorm,
     required this.windowSourceId,
     required this.windowThumbnail,

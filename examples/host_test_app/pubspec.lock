@@ -75,7 +75,7 @@ packages:
   dart_webrtc:
     dependency: transitive
     description:
-      path: "flutter-webrtc/dart-webrtc"
+      path: "../../plugins/flutter-webrtc/dart-webrtc"
       relative: true
     source: path
     version: "1.4.9"
@@ -124,7 +124,7 @@ packages:
   flutter_webrtc:
     dependency: "direct main"
     description:
-      path: flutter-webrtc
+      path: "../../plugins/flutter-webrtc"
       relative: true
     source: path
     version: "0.11.7"
@@ -151,6 +151,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  itermremote_observability:
+    dependency: "direct main"
+    description:
+      path: "../../src/modules/observability"
+      relative: true
+    source: path
+    version: "0.0.1"
   js:
     dependency: transitive
     description:

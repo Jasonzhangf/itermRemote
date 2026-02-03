@@ -375,6 +375,30 @@
 
 ## 当前执行：保活 + 崩溃原因抓取
 
+## 当前执行：Host Test App 可观测性 + 裁切/编码回环交付
+
+### 目标
+- [ ] 建立系统级 observability 模块（日志 + 快照），让问题可复现可定位
+- [ ] 修复 host_test_app 的 iTerm2 panel 捕获路径（参考 cloudplayplus_stone：依赖 desktopCapturer sourceId + SCK crop）
+- [ ] 确保：静态裁切 + 动态编码 loopback 都能产出证据包（log + screenshot）
+
+### 已完成
+- [x] 新增系统级模块：`src/modules/observability`（RunLogger：run.log + PNG 快照；默认输出 `/tmp/itermremote_logs`）
+- [x] host_test_app 接入 RunLogger：记录启动、iTerm2 meta、panel 选择、capture settings、loopback ready、outbound stats，并落盘 local/remote 预览 PNG
+- [x] 修复 `flutter_webrtc` pub 版本 API 差异：去掉 DesktopCapturerSource.appName/appId/windowId 依赖
+- [x] 诊断：macOS 26.2 + flutter_webrtc desktopCapturer.getSources 可能触发 native hard crash（CoreImage/CIContext）
+
+### 证据输出
+- [x] 静态裁切验证输出：`build/verify_loopback/20260202-191044/`
+- [x] 动态编码矩阵输出：`build/verify_matrix/2026-02-02T19-02-43.296459/`
+- [x] 运行时日志：`/tmp/itermremote_logs/host_test_app/<run-id>/run.log`
+
+### 待完成（交付清单）
+- [x] iTerm2 panel 捕获：确认 flutter_webrtc desktop capture 的 sourceId 必须来自 desktopCapturer.getSources（CGWindowId 无法直接用）
+- [x] iTerm2 panel 捕获：在 macOS 26.2 上规避 desktopCapturer.getSources hard-crash（插件 patch：禁用 eager thumbnail）
+- [ ] UI 面板列表默认不依赖 desktopCapturer thumbnails（通过 env 控制是否启用）
+- [ ] 关联到架构重构：把 observability 抽象为 Block（后续 daemon/ws 可复用）
+
 ### 已完成
 - [x] 确认 main.dart 中已有 crashLog、heartbeat、runZonedGuarded、FlutterError.onError
 - [x] 确认 WsServer 中已有端口冲突自动清理逻辑
@@ -391,3 +415,46 @@
 - [ ] 加载 launchd 服务
 - [ ] 验证服务启动并查看日志
 - [ ] 如果仍然失败，添加更详细的日志输出
+
+### 新发现（2026-02-02）
+- [ ] macOS 26.2 + flutter_webrtc 桌面 capturer：desktopCapturer.getSources 可能触发 native hard crash（CoreImage/CIContext 相关）
+  - 规避：默认禁用 desktop sources / thumbnails，通过 env 开关显式开启
+
+### 进展（2026-02-03）
+- [x] 参考 cloudplayplus_stone：引入 repo 内 `plugins/flutter-webrtc`（path dependency）
+- [x] 在插件侧把 `UpdateSourceList:updateAllThumbnails` 改为 `NO`，避免 macOS 26.x eager thumbnail 触发 crash
+
+---
+
+## 当前执行：回环验证修复（2026-02-04）
+
+### 已完成的修复
+
+1. **问题定位**：发现 host_test_app 默认启动交互式 UI，而不是 encoding matrix 测试
+   - 修改 `examples/host_test_app/lib/main.dart`：默认运行 encoding matrix 测试 (ITERMREMOTE_RUN_MATRIX=1)
+
+2. **preview 截图尺寸修复**：
+   - 问题：preview 截图尺寸 (400x363) 与编码帧 (674x978) 不一致
+   - 修改 `examples/host_test_app/lib/verify/iterm2_panel_encoding_matrix_app.dart`：
+     - 动态计算 pixelRatio，根据解码帧尺寸缩放截图
+     - 截图后 resize 到精确的解码帧尺寸
+
+### 验证结果
+
+**测试输出**：`/tmp/itermremote-verify/2026-02-04T01-00-45.223503/`
+
+**验证数据**：
+- overlay 红框尺寸 (688x1047) = layoutFrame (675x979) 在高分辨率截图中的映射
+- preview 截图尺寸 (674x978) = 编码输出 (674x978)，完全一致
+- layoutFrame 与编码输出有 1px 差异 (675->674, 979->978)，是 SCK 的裁切对齐
+
+**结论**：
+- ✅ 裁切全链路一致：layoutFrame -> SCK crop -> 编码输出 -> preview 截图
+- ✅ overlay 红框正确标记了 panel 在窗口中的位置
+- ✅ 验证通过：裁切宽度正确
+
+### 下一步
+
+1. 运行完整的 encoding matrix 测试（多 FPS + 多 bitrate）
+2. 验证所有配置的裁切正确性
+3. 提交修复到 GitHub

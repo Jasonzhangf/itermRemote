@@ -121,10 +121,50 @@ jobs:
           cd apps/host_console
           flutter test
 
+  build-host-daemon:
+    name: Build Host Daemon
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Install dependencies
+        run: |
+          cd apps/host_daemon
+          flutter pub get
+
+      - name: Build macOS
+        run: |
+          cd apps/host_daemon
+          flutter build macos
+
+  build-host-console:
+    name: Build Host Console
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Install dependencies
+        run: |
+          cd apps/host_console
+          flutter pub get
+
+      - name: Build macOS
+        run: |
+          cd apps/host_console
+          flutter build macos
+
   e2e-test:
     name: End-to-End Test
     runs-on: macos-latest
-    needs: [test-core, test-host, test-host-console]
+    needs: [test-core, test-host, test-host-console, build-host-daemon, build-host-console]
     steps:
       - uses: actions/checkout@v4
 

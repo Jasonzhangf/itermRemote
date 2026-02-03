@@ -253,6 +253,18 @@ async def main(connection):
         except Exception:
             root_bounds = None
         wf = await get_frame(target_win)
+
+        # Always include layout-based frames for overlay/debug (best-effort).
+        lf = layout_frames.get(target.session_id)
+        if lf and layout_w > 0 and layout_h > 0:
+            out["layoutFrame"] = lf
+            out["layoutWindowFrame"] = {
+                "x": 0.0,
+                "y": 0.0,
+                "w": float(layout_w),
+                "h": float(layout_h),
+            }
+
         if f and root_bounds:
             minx, miny, maxx, maxy = root_bounds
             ww = float(maxx - minx)

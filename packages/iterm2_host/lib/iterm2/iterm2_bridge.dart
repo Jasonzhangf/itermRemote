@@ -59,7 +59,8 @@ class ITerm2Bridge {
     return panelsAny
         .whereType<Map>()
         .map((m) => ITerm2SessionInfo.fromJson(
-            m.map((k, v) => MapEntry(k.toString(), v))))
+              m.map((k, v) => MapEntry(k.toString(), v)),
+            ))
         .toList(growable: false);
   }
 

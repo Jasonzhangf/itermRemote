@@ -12,119 +12,162 @@ import 'macos_window_list.dart';
 /// This lives in the example app because it uses flutter_webrtc desktop APIs.
 class CaptureModeController {
   final ITerm2Bridge iterm2Bridge;
+  final bool _allowDesktopSources;
 
-  CaptureModeController({required this.iterm2Bridge});
+  CaptureModeController({
+    required this.iterm2Bridge,
+    bool allowDesktopSources = false,
+  }) : _allowDesktopSources = allowDesktopSources;
 
   Future<List<CapturableScreen>> listScreens({
     ThumbnailSize? thumbnailSize,
   }) async {
+    if (!_allowDesktopSources) {
+      return const [];
+    }
     final sources = await desktopCapturer.getSources(
       types: [SourceType.Screen],
       thumbnailSize: thumbnailSize,
     );
     return sources
-        .map((s) => CapturableScreen(
-              id: s.id,
-              title: s.name,
-              thumbnail: s.thumbnail,
-              thumbnailSize: thumbnailSize,
-            ))
+        .map(
+          (s) => CapturableScreen(
+            id: s.id,
+            title: s.name,
+            thumbnail: s.thumbnail,
+            thumbnailSize: thumbnailSize,
+          ),
+        )
         .toList(growable: false);
   }
 
   bool _isItermSource(DesktopCapturerSource s) {
-    final an = (s.appName ?? '').toLowerCase();
-    final aid = (s.appId ?? '').toLowerCase();
     final name = s.name.toLowerCase();
-    return an.contains('iterm') || aid.contains('iterm') || name.contains('iterm');
+    return name.contains('iterm');
   }
 
   bool _isSelfSource(DesktopCapturerSource s) {
-    final an = (s.appName ?? '').toLowerCase();
-    final aid = (s.appId ?? '').toLowerCase();
     final name = s.name.toLowerCase();
-    return an.contains('host_test_app') ||
-        aid.contains('host_test_app') ||
-        name.contains('host_test_app');
+    return name.contains('host_test_app');
   }
 
   Future<List<CapturableWindow>> listWindows({
     ThumbnailSize? thumbnailSize,
   }) async {
+    if (!_allowDesktopSources) {
+      return const [];
+    }
     final sources = await desktopCapturer.getSources(
       types: [SourceType.Window],
       thumbnailSize: thumbnailSize,
     );
     return sources
-        .map((s) => CapturableWindow(
-              id: s.id,
-              title: s.name,
-              thumbnail: s.thumbnail,
-              thumbnailSize: thumbnailSize,
-            ))
+        .map(
+          (s) => CapturableWindow(
+            id: s.id,
+            title: s.name,
+            thumbnail: s.thumbnail,
+            thumbnailSize: thumbnailSize,
+          ),
+        )
         .toList(growable: false);
   }
 
   /// iTerm2 panels need: (1) panel list from python API, (2) a window capture
   /// source to crop from.
   Future<List<Iterm2PanelItem>> listIterm2Panels({
-    required ThumbnailSize thumbnailSize,
+    ThumbnailSize? thumbnailSize,
   }) async {
     final panels = await iterm2Bridge.getSessions();
 
-    // Also list windows with thumbnails, used to render panel previews.
-    final windows = await desktopCapturer.getSources(
-      types: [SourceType.Window],
-      thumbnailSize: thumbnailSize,
-    );
+    // Labels must reflect spatial order, not enumeration order.
+    // We'll sort by (top, left) in the iTerm2 coordinate system.
+    // iTerm2 frames are in points. If frame is missing, fall back to layoutFrame.
+    int cmp(ITerm2SessionInfo a, ITerm2SessionInfo b) {
+      final af = a.frame ?? a.layoutFrame;
+      final bf = b.frame ?? b.layoutFrame;
+      final ay = af?['y'] ?? 0.0;
+      final ax = af?['x'] ?? 0.0;
+      final by = bf?['y'] ?? 0.0;
+      final bx = bf?['x'] ?? 0.0;
+      // Smaller y is higher/top in most iTerm2 frames.
+      if ((ay - by).abs() > 1e-3) return ay.compareTo(by);
+      if ((ax - bx).abs() > 1e-3) return ax.compareTo(bx);
+      return a.index.compareTo(b.index);
+    }
 
-    // Use iTerm2 window_number to deterministically pick the correct window:
-    // - fetch the real iTerm2 window frame via python
-    // - match by nearest desktop window bounds via a small macOS helper
-    final winNumberToDesktopSourceId = <int, String>{};
-    for (final p in panels) {
-      final n = p.windowNumber;
-      if (n == null || n <= 0) continue;
-      if (winNumberToDesktopSourceId.containsKey(n)) continue;
-      try {
-        final id = await _resolveDesktopWindowForItermWindowNumber(n, windows);
-        if (id != null) winNumberToDesktopSourceId[n] = id;
-      } catch (_) {
-        // ignore, fall back to null
+    final sortedPanels = panels.toList(growable: false)..sort(cmp);
+    final titleBySession = <String, String>{};
+    for (int i = 0; i < sortedPanels.length; i++) {
+      titleBySession[sortedPanels[i].sessionId] = 'P${i + 1}';
+    }
+
+    List<DesktopCapturerSource> windows = const [];
+    Map<int, String> winNumberToDesktopSourceId = const {};
+    if (_allowDesktopSources) {
+      // Also list windows with thumbnails, used to render panel previews.
+      windows = await desktopCapturer.getSources(
+        types: [SourceType.Window],
+        thumbnailSize: thumbnailSize,
+      );
+
+      // Use iTerm2 window_number to deterministically pick the correct window:
+      // - fetch the real iTerm2 window frame via python
+      // - match by nearest desktop window bounds via a small macOS helper
+      winNumberToDesktopSourceId = <int, String>{};
+      for (final p in panels) {
+        final n = p.windowNumber;
+        if (n == null || n <= 0) continue;
+        if (winNumberToDesktopSourceId.containsKey(n)) continue;
+        try {
+          final id = await _resolveDesktopWindowForItermWindowNumber(
+            n,
+            windows,
+          );
+          if (id != null) winNumberToDesktopSourceId[n] = id;
+        } catch (_) {
+          // ignore, fall back to null
+        }
       }
     }
 
     final items = <Iterm2PanelItem>[];
     for (final p in panels) {
       final crop = _computeCropRectNormFromSession(p);
-      final bestWindowId = (p.windowNumber != null)
+      final bestWindowId = (_allowDesktopSources && p.windowNumber != null)
           ? winNumberToDesktopSourceId[p.windowNumber!]
           : null;
       final bestWindow = (bestWindowId == null)
           ? null
-          : windows.where((w) => w.id == bestWindowId).cast<DesktopCapturerSource?>().first;
-      // Prefer the stable CGWindowID for SCK-direct capture.
-      // Use cgWindowId if available; otherwise fall back to resolved window source.
-      String stableWindowSourceId;
-      if (p.cgWindowId != null && p.cgWindowId! > 0) {
-        stableWindowSourceId = '${p.cgWindowId}';
-      } else if (bestWindowId != null) {
-        stableWindowSourceId = bestWindowId;
-      } else {
-        // Last resort: use windowNumber if available.
-        stableWindowSourceId = (p.windowNumber != null && p.windowNumber! > 0)
-            ? '${p.windowNumber}'
-            : '';
+          : windows
+                .where((w) => w.id == bestWindowId)
+                .cast<DesktopCapturerSource?>()
+                .first;
+      String? stableWindowSourceId;
+      if (_allowDesktopSources) {
+        if (bestWindowId != null && bestWindowId.isNotEmpty) {
+          stableWindowSourceId = bestWindowId;
+        } else {
+          for (final w in windows) {
+            if (_isItermSource(w)) {
+              stableWindowSourceId = w.id;
+              break;
+            }
+          }
+        }
       }
 
-      items.add(Iterm2PanelItem(
-        sessionId: p.sessionId,
-        title: p.title,
-        detail: p.detail,
-        cropRectNorm: crop,
-        windowSourceId: stableWindowSourceId.isNotEmpty ? stableWindowSourceId : null,
-        windowThumbnail: bestWindow?.thumbnail,
-      ));
+      items.add(
+        Iterm2PanelItem(
+          sessionId: p.sessionId,
+          title: titleBySession[p.sessionId] ?? p.title,
+          detail: p.detail,
+          cgWindowId: p.cgWindowId,
+          cropRectNorm: crop,
+          windowSourceId: stableWindowSourceId,
+          windowThumbnail: bestWindow?.thumbnail,
+        ),
+      );
     }
 
     return items;
@@ -142,31 +185,87 @@ class CaptureModeController {
   }
 
   Map<String, double>? _computeCropRectNormFromSession(ITerm2SessionInfo s) {
-    final f = s.frame;
-    final wf = s.windowFrame;
-    if (f == null || wf == null) return null;
+    // Prefer real frame; fall back to layoutFrame when iTerm2 API lacks it.
+    final f = s.frame ?? s.layoutFrame;
+    if (f == null) return null;
 
     final fx = f['x'] ?? 0.0;
     final fy = f['y'] ?? 0.0;
     final fw = f['w'] ?? 0.0;
     final fh = f['h'] ?? 0.0;
 
-    final wx = wf['x'] ?? 0.0;
-    final wy = wf['y'] ?? 0.0;
-    final ww = wf['w'] ?? 0.0;
-    final wh = wf['h'] ?? 0.0;
-
-    final r = computeIterm2CropRectNormBestEffort(
+    Map<String, double>? r = _computeCropFromFrames(
       fx: fx,
       fy: fy,
       fw: fw,
       fh: fh,
+      // For correctness, we always try to compute in the windowFrame space.
+      // rawWindowFrame is only used as a *hint* for coordinate mismatch.
+      wf: s.windowFrame ?? s.layoutWindowFrame ?? s.rawWindowFrame,
+      rawWf: s.rawWindowFrame,
+    );
+
+    if (_cropLooksInvalid(r)) {
+      r = _computeCropFromFrames(
+        fx: fx,
+        fy: fy,
+        fw: fw,
+        fh: fh,
+        wf: s.layoutWindowFrame,
+        rawWf: s.rawWindowFrame,
+        // Avoid using layoutFrame here because it can represent an inferred
+        // tiling that does not match real split ratios.
+        layout: null,
+      );
+    }
+
+    return r;
+  }
+
+  Map<String, double>? _computeCropFromFrames({
+    required double fx,
+    required double fy,
+    required double fw,
+    required double fh,
+    required Map<String, double>? wf,
+    required Map<String, double>? rawWf,
+    Map<String, double>? layout,
+  }) {
+    if (wf == null) return null;
+    final wx = wf['x'] ?? 0.0;
+    final wy = wf['y'] ?? 0.0;
+    final ww = wf['w'] ?? 0.0;
+    final wh = wf['h'] ?? 0.0;
+    if (ww <= 0 || wh <= 0 || fw <= 0 || fh <= 0) return null;
+
+    final r = computeIterm2CropRectNormBestEffort(
+      fx: layout?['x'] ?? fx,
+      fy: layout?['y'] ?? fy,
+      fw: layout?['w'] ?? fw,
+      fh: layout?['h'] ?? fh,
       wx: wx,
       wy: wy,
       ww: ww,
       wh: wh,
+      rawWx: rawWf?['x'],
+      rawWy: rawWf?['y'],
+      rawWw: rawWf?['w'],
+      rawWh: rawWf?['h'],
     );
     return r?.cropRectNorm;
+  }
+
+  bool _cropLooksInvalid(Map<String, double>? r) {
+    if (r == null) return true;
+    final x = r['x'] ?? 0.0;
+    final y = r['y'] ?? 0.0;
+    final w = r['w'] ?? 0.0;
+    final h = r['h'] ?? 0.0;
+    if (w <= 0.001 || h <= 0.001) return true;
+    if (w > 1.001 || h > 1.001) return true;
+    if (x < -0.01 || y < -0.01) return true;
+    if (x + w > 1.01 || y + h > 1.01) return true;
+    return false;
   }
 
   Future<String?> _resolveDesktopWindowForItermWindowNumber(
@@ -191,22 +290,13 @@ class CaptureModeController {
     final rh = (raw['h'] as num?)?.toDouble();
     if (rx == null || ry == null || rw == null || rh == null) return null;
 
-    // With the cloudplayplus_stone fork of flutter_webrtc, the desktop capturer
-    // surfaces the native windowId (best-effort) which is matchable.
-    for (final s in windows) {
-      final wid = s.windowId;
-      if (wid != null && wid == windowNumber && _isItermSource(s)) {
-        return s.id;
-      }
-    }
-
     // Strong fallback: prefer any window source that is clearly iTerm2.
     // This avoids selecting the wrong app when windowId mapping is unreliable.
     for (final s in windows) {
       if (_isItermSource(s)) return s.id;
     }
 
-   // Get macOS window list from native API and match iTerm2 window frame.
+    // Get macOS window list from native API and match iTerm2 window frame.
     List<MacOsWindowInfo> macWindows;
     try {
       macWindows = await MacOsWindowList.listWindows();

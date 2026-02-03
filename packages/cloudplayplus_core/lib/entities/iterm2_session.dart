@@ -6,7 +6,11 @@ class ITerm2SessionInfo {
   final int index;
   final Map<String, double>? frame;
   final Map<String, double>? windowFrame;
+  final Map<String, double>? rawWindowFrame;
+  final Map<String, double>? layoutFrame;
+  final Map<String, double>? layoutWindowFrame;
   final int? windowNumber;
+
   /// CGWindowID used by ScreenCaptureKit for direct window capture (macOS).
   final int? cgWindowId;
 
@@ -17,6 +21,9 @@ class ITerm2SessionInfo {
     required this.index,
     this.frame,
     this.windowFrame,
+    this.rawWindowFrame,
+    this.layoutFrame,
+    this.layoutWindowFrame,
     this.windowNumber,
     this.cgWindowId,
   });
@@ -29,9 +36,11 @@ class ITerm2SessionInfo {
       index: json['index'] as int,
       frame: _parseRect(json['frame']),
       windowFrame: _parseRect(json['windowFrame']),
-      windowNumber: (json['windowId'] is num)
-          ? (json['windowId'] as num).toInt()
-          : null,
+      rawWindowFrame: _parseRect(json['rawWindowFrame']),
+      layoutFrame: _parseRect(json['layoutFrame']),
+      layoutWindowFrame: _parseRect(json['layoutWindowFrame']),
+      windowNumber:
+          (json['windowId'] is num) ? (json['windowId'] as num).toInt() : null,
       cgWindowId: (json['cgWindowId'] is num)
           ? (json['cgWindowId'] as num).toInt()
           : null,
@@ -46,6 +55,9 @@ class ITerm2SessionInfo {
       'index': index,
       if (frame != null) 'frame': frame,
       if (windowFrame != null) 'windowFrame': windowFrame,
+      if (rawWindowFrame != null) 'rawWindowFrame': rawWindowFrame,
+      if (layoutFrame != null) 'layoutFrame': layoutFrame,
+      if (layoutWindowFrame != null) 'layoutWindowFrame': layoutWindowFrame,
       if (windowNumber != null) 'windowId': windowNumber,
       if (cgWindowId != null) 'cgWindowId': cgWindowId,
     };

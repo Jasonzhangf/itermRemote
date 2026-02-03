@@ -7,13 +7,21 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Applications/host_daemon.app/Contents/MacOS/host_daemon</string>
+    <string>/Applications/itermremote.app/Contents/MacOS/itermremote</string>
   </array>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>ITERMREMOTE_HEADLESS</key>
     <string>1</string>
+
+    <!-- Default WS bind port; override if needed. -->
+    <key>ITERMREMOTE_WS_PORT</key>
+    <string>8766</string>
+
+    <!-- Writable state dir (PID, heartbeat, crash log). -->
+    <key>ITERMREMOTE_STATE_DIR</key>
+    <string>/tmp/itermremote-host-daemon</string>
   </dict>
 
   <key>KeepAlive</key>
@@ -27,4 +35,3 @@
   <string>/tmp/itermremote-host-daemon/stderr.log</string>
 </dict>
 </plist>
-

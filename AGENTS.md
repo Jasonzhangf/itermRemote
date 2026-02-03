@@ -2,11 +2,83 @@
 
 本文件定义本仓库的强制规则与开发流程，所有自动化与人工提交必须遵守。
 
+## 任务管理（强制）
+
+- 本仓库使用 Beads CLI（`bd`）管理具体任务；`AGENTS.md` 只保留通用强制规则。
+- 使用 stealth 模式在本地管理任务，不把 beads 数据提交到仓库：`bd init --stealth`。
+- 常用命令：
+  - `bd ready`：列出无 blocker 的任务
+  - `bd create "Title" -p 0`：创建 P0 任务
+  - `bd dep add <child> <parent>`：建立依赖（blocked/blocks 关系）
+  - `bd show <id>`：查看任务细节/审计
+
+### bd 搜索/过滤（常用）
+
+#### 1) `bd search`：全文检索（标题/描述/ID）
+
+- 基础：
+  - `bd search "关键词"`
+  - `bd search "authentication bug"`
+  - `bd search "itermremote-"`（支持部分 ID）
+  - `bd search --query "performance"`
+
+- 常用过滤：
+  - `bd search "bug" --status open`
+  - `bd search "database" --label backend --limit 10`
+  - `bd search "refactor" --assignee alice`
+  - `bd search "security" --priority-min 0 --priority-max 2`
+
+- 时间范围：
+  - `bd search "bug" --created-after 2025-01-01`
+  - `bd search "refactor" --updated-after 2025-01-01`
+  - `bd search "cleanup" --closed-before 2025-12-31`
+
+- 排序与展示：
+  - `bd search "bug" --sort priority`
+  - `bd search "task" --sort created --reverse`
+  - `bd search "design" --long`
+
+- `--sort` 支持字段：
+  - `priority, created, updated, closed, status, id, title, type, assignee`
+
+#### 2) `bd list`：字段级精确过滤（缩小范围）
+
+- 按状态/优先级/类型：
+  - `bd list --status open --priority 1`
+  - `bd list --type bug`
+
+- 按标签：
+  - `bd list --label bug,critical`（AND：必须同时拥有）
+  - `bd list --label-any frontend,backend`（OR：任意一个即可）
+
+- 按字段包含（子串匹配）：
+  - `bd list --title-contains "auth"`
+  - `bd list --desc-contains "implement"`
+  - `bd list --notes-contains "TODO"`
+
+- 按日期范围：
+  - `bd list --created-after 2024-01-01`
+  - `bd list --updated-before 2024-12-31`
+  - `bd list --closed-after 2024-01-01`
+
+- 空字段筛选：
+  - `bd list --empty-description`
+  - `bd list --no-assignee`
+  - `bd list --no-labels`
+
+- 优先级范围：
+  - `bd list --priority-min 0 --priority-max 1`
+  - `bd list --priority-min 2`
+
+- 组合过滤：
+  - `bd list --status open --priority 1 --label-any urgent,critical --no-assignee`
+
 ## 核心原则
 
 1. **从小开始构建**：每个模块先实现基础版本，通过功能测试后才能提交。
 2. **测试先行**：新增任何功能必须有完整单元测试；可做 E2E 的最终必须做一次端到端测试。
 3. **持续可用**：每次提交必须能构建、能通过测试、能通过 CI。
+4. **测试后人工确认**：每次跑完测试（单测/E2E/回环截图验证等）必须人工检查输出（日志/截图/视频/指标）是否符合预期；禁止只看“测试通过”就判定完成。
 
 ## Build Gate（强制）
 
@@ -51,19 +123,10 @@
 3. 默认监控脚本：`scripts/monitor_memory.py`，默认目标进程名：`host_test_app`。
 4. 日志/状态文件必须写入可写目录（推荐 `/tmp/itermremote-memory-monitor` 或通过 `--state-dir` 指定）。
 
-## 模块交付规则
+## 交付阶段（通过 bd 管理）
 
-1. 模块必须按阶段交付：
-   - Phase 0: 基础设施 + 目录结构 + CI
-   - Phase 1: Core 模块最小闭环
-   - Phase 2: Host 模块最小闭环
-   - Phase 3: Android 客户端最小闭环
-   - Phase 4: E2E 测试闭环
-
-2. 每个阶段完成必须满足：
-   - 单测覆盖率达标
-   - README 最新
-   - CI 通过
+- 交付阶段与里程碑拆分到 bd 中管理（epic/task/sub-task）。
+- 本文件仅保留门禁与流程规则；不要在此维护阶段任务清单。
 
 ## 提交策略
 

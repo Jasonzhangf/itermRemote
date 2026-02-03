@@ -147,6 +147,25 @@ async def main(connection):
         except Exception:
             win_num_map[getattr(win, "window_id", None)] = win_idx
 
+        cg_window_id = None
+        try:
+            # macOS: use Window.screen_number (CGWindowID) when available.
+            cg_window_id = int(getattr(win, "screen_number", 0))
+            if cg_window_id <= 0:
+                cg_window_id = None
+        except Exception:
+            cg_window_id = None
+
+        win_frame = await get_frame(win)
+        raw_window_frame = None
+        if win_frame:
+            raw_window_frame = {
+                "x": float(win_frame.origin.x),
+                "y": float(win_frame.origin.y),
+                "w": float(win_frame.size.width),
+                "h": float(win_frame.size.height),
+            }
+
         tab_idx = 0
         for tab in win.tabs:
             tab_idx += 1
@@ -177,24 +196,31 @@ async def main(connection):
                     "detail": detail,
                     "index": len(panels),
                     "windowId": win_num_map.get(getattr(win, "window_id", None), win_idx),
+                    "cgWindowId": cg_window_id,
                 }
                 try:
+                    sess_frame = await get_frame(sess)
+                    if sess_frame and raw_window_frame:
+                        item["frame"] = {
+                            "x": float(sess_frame.origin.x),
+                            "y": float(sess_frame.origin.y),
+                            "w": float(sess_frame.size.width),
+                            "h": float(sess_frame.size.height),
+                        }
+                        item["windowFrame"] = raw_window_frame
+
+                    if raw_window_frame:
+                        item["rawWindowFrame"] = raw_window_frame
+
+                    # Keep layout-based frames for fallback/debug.
                     f = layout_frames.get(sess.session_id)
-                    wf = await get_frame(win)
                     if f and layout_w > 0 and layout_h > 0:
-                        item["frame"] = f
-                        item["windowFrame"] = {
+                        item["layoutFrame"] = f
+                        item["layoutWindowFrame"] = {
                             "x": 0.0,
                             "y": 0.0,
                             "w": float(layout_w),
                             "h": float(layout_h),
-                        }
-                    if wf:
-                        item["rawWindowFrame"] = {
-                            "x": float(wf.origin.x),
-                            "y": float(wf.origin.y),
-                            "w": float(wf.size.width),
-                            "h": float(wf.size.height),
                         }
                 except Exception:
                     pass

@@ -1,0 +1,13 @@
+name: itermremote_observability
+description: System-level logging and snapshot utilities for itermRemote.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  meta: ^1.17.0
+
+dev_dependencies:
+  test: ^1.25.8

@@ -40,13 +40,15 @@ No documentation available.
 Best-effort crop computation for an iTerm2 session (panel) inside its parent
 window.
 
-Inputs are the raw `frame` (session) and `windowFrame` values returned by
-iTerm2's Python API.
+This implementation is copied from `cloudplayplus_stone` (reference project)
+because it already handles the macOS ScreenCaptureKit coordinate quirks
+robustly:
+- non-uniform pane layout (2x5 / mixed widths/heights)
+- window vs content coordinate spaces
+- Retina scale / raw window frame mismatches
 
-The function evaluates multiple coordinate hypotheses and returns the one
-with the lowest overflow/clamp penalty.
-
-Returns `null` when the provided geometry is unusable.
+The output cropRectNorm is normalized [0..1] in *captured frame* coordinates
+(origin top-left), which matches the ScreenCaptureKit crop pipeline.
 
 ### lib/network/device_id.dart
 
