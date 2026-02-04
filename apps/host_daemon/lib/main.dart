@@ -212,9 +212,19 @@ class DaemonApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // In headless mode we keep the window effectively invisible and non-interactive.
+    // We still need a Flutter view hierarchy for plugins that require a running
+    // Flutter engine.
+    final headless = (Platform.environment['ITERMREMOTE_HEADLESS'] ?? '').trim() == '1';
+    if (headless) {
+      return const MaterialApp(
+        home: SizedBox.shrink(),
+      );
+    }
+
     return const MaterialApp(
       home: Scaffold(
-        body: Center(child: Text('iTermRemote Daemon (headless mode)')),
+        body: Center(child: Text('iTermRemote Daemon')),
       ),
     );
   }

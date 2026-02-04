@@ -23,6 +23,8 @@ class WsServer {
   final _codec = const EnvelopeJsonCodec();
   HttpServer? _server;
 
+  int get boundPort => _server?.port ?? 0;
+
   final Set<_WsClient> _clients = {};
 
   Future<void> start() async {
@@ -71,6 +73,13 @@ class WsServer {
         }
       }
     });
+  }
+
+  Future<void> stop() async {
+    try {
+      await _server?.close(force: true);
+    } catch (_) {}
+    _server = null;
   }
 
   Future<void> _selfCheckTcp() async {
