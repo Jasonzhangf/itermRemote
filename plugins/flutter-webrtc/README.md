@@ -31,7 +31,6 @@ android/build.gradle
 android/gradle.properties
 android/proguard-rules.pro
 android/settings.gradle
-dart-webrtc/.git
 dart-webrtc/.gitignore
 dart-webrtc/CHANGELOG.md
 dart-webrtc/LICENSE

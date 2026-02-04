@@ -80,6 +80,7 @@ for m in "${modules[@]}"; do
       ! -name "README.md" \
       ! -name "README_MANUAL.md" \
       ! -name "*.iml" \
+      ! -name ".git" \
       ! -name ".metadata" \
       ! -path "./.idea/*" \
       ! -name ".flutter-plugins-dependencies" \
