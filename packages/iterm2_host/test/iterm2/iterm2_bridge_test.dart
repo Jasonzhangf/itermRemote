@@ -3,14 +3,13 @@ import 'package:test/test.dart';
 
 void main() {
   group('ITerm2Bridge (mock scripts) - deprecated', () {
+    // Skip this whole group everywhere.
+    // Note: using group-level `skip:` keeps CI green.
+
     late ITerm2Bridge bridge;
 
     // Deprecated: This test relies on mock Python scripts and does not validate
-    // real iTerm2 behavior. Keep it skipped to avoid giving false confidence.
-    // Real iTerm2 regression must be done locally with a running iTerm2.
-    setUpAll(() {
-      throw Skip('Deprecated: mock-based ITerm2Bridge tests are not meaningful.');
-    });
+    // real iTerm2 behavior. Real iTerm2 regression must be done locally.
 
     setUp(() {
       bridge = ITerm2Bridge();
@@ -44,5 +43,5 @@ void main() {
       expect(text, contains('Mock session buffer'));
       expect(text, contains('session-1'));
     });
-  });
+  }, skip: 'Deprecated: mock-based ITerm2Bridge tests are not meaningful.');
 }
