@@ -18,13 +18,10 @@
 .gitignore
 .idea/modules.xml
 .idea/workspace.xml
-.metadata
 DEBUG_NOTES.md
 ERROR_LOG.md
-README.md
 UPDATE_HISTORY.md
 analysis_options.yaml
-host_console.iml
 lib/main.dart
 macos/.gitignore
 macos/Podfile

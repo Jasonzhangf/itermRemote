@@ -17,7 +17,6 @@
 ```
 DEBUG_NOTES.md
 ERROR_LOG.md
-README.md
 UPDATE_HISTORY.md
 lib/cloudplayplus_core.dart
 pubspec.lock

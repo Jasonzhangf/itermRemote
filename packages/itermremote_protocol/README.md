@@ -73,7 +73,6 @@
 ### Files
 
 ```
-README_MANUAL.md
 analysis_options.yaml
 lib/itermremote_protocol.dart
 pubspec.lock

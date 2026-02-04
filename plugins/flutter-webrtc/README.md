@@ -23,7 +23,6 @@ CHANGELOG.md
 CONTRIBUTING.md
 LICENSE
 NOTICE
-README.md
 analysis_options.yaml
 android/build.gradle
 android/gradle.properties
@@ -33,14 +32,12 @@ dart-webrtc/.git
 dart-webrtc/.gitignore
 dart-webrtc/CHANGELOG.md
 dart-webrtc/LICENSE
-dart-webrtc/README.md
 dart-webrtc/analysis_options.yaml
 dart-webrtc/pubspec.yaml
 dart-webrtc/renovate.json
 elinux/CMakeLists.txt
 elinux/flutter_webrtc_plugin.cc
 example/.gitignore
-example/README.md
 example/analysis_options.yaml
 example/pubspec.yaml
 flutter-webrtc.code-workspace
@@ -54,8 +51,6 @@ macos/.gitignore
 macos/flutter_webrtc.podspec
 pubspec.yaml
 renovate.json
-webrtc.iml
-webrtc_android.iml
 windows/.gitignore
 windows/CMakeLists.txt
 windows/flutter_webrtc_plugin.cc

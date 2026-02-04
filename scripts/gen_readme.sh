@@ -75,6 +75,10 @@ for m in "${modules[@]}"; do
       ! -path "./build/*" \
       ! -path "./Pods/*" \
       ! -path "./DerivedData/*" \
+      ! -name "README.md" \
+      ! -name "README_MANUAL.md" \
+      ! -name "*.iml" \
+      ! -name ".metadata" \
       | sed 's|^\./||' \
       | sort
   ) >> "$tmp"

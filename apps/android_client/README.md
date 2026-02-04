@@ -15,13 +15,10 @@
 ### Files
 
 ```
-.metadata
 DEBUG_NOTES.md
 ERROR_LOG.md
-README.md
 UPDATE_HISTORY.md
 android/.gitignore
-android/android_client_android.iml
 android/build.gradle.kts
 android/gradle.properties
 android/gradlew

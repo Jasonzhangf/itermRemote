@@ -18,13 +18,10 @@
 .gitignore
 .idea/modules.xml
 .idea/workspace.xml
-.metadata
-README.md
 analysis_options.yaml
-host_daemon.iml
 lib/main.dart
 macos/.gitignore
 pubspec.lock
 pubspec.yaml
-test/widget_test.dart
+test/ws_server_test.dart
 ```

@@ -19,10 +19,7 @@
 .gitignore
 .idea/modules.xml
 .idea/workspace.xml
-.metadata
-README.md
 analysis_options.yaml
-host_test_app.iml
 lib/bandwidth_test_app.dart
 lib/main.dart
 macos/.gitignore

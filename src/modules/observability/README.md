@@ -38,7 +38,6 @@
 ### Files
 
 ```
-README_MANUAL.md
 lib/observability.dart
 lib/run_logger.dart
 pubspec.lock
