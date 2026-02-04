@@ -1,0 +1,14 @@
+name: daemon_ws
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  shelf: ^1.4.2
+  shelf_web_socket: ^2.0.0
+  itermremote_protocol:
+    path: ../../../packages/itermremote_protocol
+  itermremote_blocks:
+    path: ../../../packages/itermremote_blocks
+

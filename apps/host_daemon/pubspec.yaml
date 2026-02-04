@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  daemon_ws:
+    path: ../../src/modules/daemon_ws
   shelf: ^1.4.2
   shelf_web_socket: ^2.0.0
   itermremote_protocol:

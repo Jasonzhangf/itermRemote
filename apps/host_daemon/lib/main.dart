@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:itermremote_blocks/itermremote_blocks.dart';
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
-import 'src/ws_server.dart';
+import 'package:daemon_ws/ws_server.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

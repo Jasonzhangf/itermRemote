@@ -6,7 +6,7 @@ import 'package:itermremote_blocks/itermremote_blocks.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'package:host_daemon/src/ws_server.dart';
+import 'package:daemon_ws/daemon_ws.dart';
 
 void main() {
   test('WsServer routes cmd to block and returns ack', () async {
