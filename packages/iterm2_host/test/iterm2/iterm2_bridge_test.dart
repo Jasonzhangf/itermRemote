@@ -1,6 +1,7 @@
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:test/test.dart';
 
+@Tags(['iterm2'])
 void main() {
   group('ITerm2Bridge (mock scripts) - deprecated', () {
     // Skip this whole group everywhere.

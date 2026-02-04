@@ -1,0 +1,23 @@
+#!/bin/bash
+# Optional pre-commit hook to run iTerm2 regression before committing.
+# This hook is NOT installed by default; users must symlink it manually:
+#   ln -s "$(git rev-parse --show-toplevel)/scripts/ci/hooks/pre-commit-iterm2-regression" .git/hooks/pre-commit-iterm2-regression
+#   chmod +x .git/hooks/pre-commit-iterm2-regression
+#
+# Then trigger it manually before committing:
+#   .git/hooks/pre-commit-iterm2-regression
+#
+# Or add it to your pre-commit hook chain (if using husky/lefthook/etc).
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$REPO_ROOT"
+
+echo "[pre-commit] Running iTerm2 regression (optional)..."
+if bash scripts/local/run_iterm2_regression.sh; then
+  echo "[pre-commit] iTerm2 regression passed."
+else
+  echo "[pre-commit] iTerm2 regression failed. Commit blocked."
+  exit 1
+fi

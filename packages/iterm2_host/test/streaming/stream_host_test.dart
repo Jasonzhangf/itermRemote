@@ -3,6 +3,7 @@ import 'package:test/test.dart';
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:iterm2_host/streaming/stream_host.dart';
 
+@Tags(['iterm2'])
 void main() {
   group('StreamHost', () {
     test('initialize loads sessions and sets state to ready', () async {

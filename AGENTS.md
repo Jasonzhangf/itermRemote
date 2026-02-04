@@ -12,6 +12,48 @@
   - `bd dep add <child> <parent>`：建立依赖（blocked/blocks 关系）
   - `bd show <id>`：查看任务细节/审计
 
+### 团队协作：bd 基于 git 的同步流程（强制）
+
+目标：团队只通过 git 同步 `.beads/issues.jsonl`（以及必要的元数据文件），不要同步本地数据库文件，
+并把“忘了导出/导入”的风险降到最低。
+
+1) **统一同步模式**
+
+- `bd sync mode set git-portable`
+
+2) **一次性初始化**
+
+- `bd init`
+- 若 main 分支受保护：用独立分支承载 beads 元数据：`bd init --branch beads-sync`
+
+3) **自动护栏（强烈推荐/默认开启）**
+
+- 安装 hooks：`bd hooks install`
+  - pre-commit / post-merge / pre-push / post-checkout 等
+  - 提交前自动 flush
+  - 拉取/切分支后自动 import
+  - push 前阻止 stale
+
+4) **日常流程（最省心）**
+
+- `git pull --rebase` → 正常 `bd create/update/close` → 正常 `git commit/push`
+  - hooks 会自动处理大部分同步动作
+
+5) **关键时刻强制落盘**
+
+- 结束会话/交接前跑一次：`bd sync`
+  - 将 debounce 窗口里的改动立刻刷到 JSONL
+
+6) **git 追踪约定（强制）**
+
+- 仅追踪：`.beads/issues.jsonl`、`.gitattributes`、`.beads/.gitignore`（以及 hooks 安装需要的少量元数据）
+- 禁止提交：`.beads/beads.db` 等本地数据库/机器相关文件
+
+7) **git worktree 特殊约定**
+
+- 不开 bd daemon：`export BEADS_NO_DAEMON=1` 或每次加 `--no-daemon`
+- 主要依赖 hooks；必要时手动执行 `bd sync`
+
 ### bd 搜索/过滤（常用）
 
 #### 1) `bd search`：全文检索（标题/描述/ID）

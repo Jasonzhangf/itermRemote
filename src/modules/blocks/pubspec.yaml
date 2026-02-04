@@ -1,16 +1,16 @@
-name: daemon_ws
+name: itermremote_blocks
+description: Block interfaces and registry for iTermRemote daemon.
+version: 0.1.0
 publish_to: 'none'
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
-  shelf: ^1.4.2
-  shelf_web_socket: ^2.0.0
   itermremote_protocol:
     path: ../../../packages/itermremote_protocol
-  itermremote_blocks:
-    path: ../blocks
+  iterm2_host:
+    path: ../../../packages/iterm2_host
 
 dev_dependencies:
   lints: ^3.0.0
