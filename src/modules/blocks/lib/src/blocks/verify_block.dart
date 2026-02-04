@@ -89,23 +89,70 @@ class VerifyBlock implements Block {
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final evidenceFile = File('${dir.path}/evidence_$timestamp.json');
+    final windowPng = File('${dir.path}/window_$timestamp.png');
+    final metaJson = File('${dir.path}/meta_$timestamp.json');
+    final overlayPng = File('${dir.path}/overlay_$timestamp.png');
+
+    if (cropMeta is! Map) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_payload',
+        message: 'captureEvidence requires payload.cropMeta (Map)',
+      );
+    }
+
+    metaJson.writeAsStringSync(const JsonEncoder().convert(cropMeta));
+
+    final cgWindowId = cropMeta['cgWindowId'];
+    if (cgWindowId is! int || cgWindowId <= 0) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_crop_meta',
+        message: 'captureEvidence requires cropMeta.cgWindowId (int)',
+      );
+    }
+
+    final captureResult = await Process.run(
+      '/usr/sbin/screencapture',
+      ['-l', '$cgWindowId', '-x', windowPng.path],
+    );
+    if (captureResult.exitCode != 0) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'screencapture_failed',
+        message: 'screencapture failed: ${captureResult.stderr}',
+      );
+    }
+
+    final overlayResult = await Process.run(
+      'python3',
+      [
+        'scripts/python/overlay_crop_box.py',
+        windowPng.path,
+        metaJson.path,
+        overlayPng.path,
+      ],
+    );
 
     final evidence = {
       'timestamp': timestamp,
       'sessionId': sessionId,
       'cropMeta': cropMeta,
+      'metaJson': metaJson.path,
+      'windowPng': windowPng.path,
+      'overlayPng': overlayPng.path,
+      'overlaySuccess': overlayResult.exitCode == 0,
       'status': 'captured',
     };
 
-    evidenceFile.writeAsStringSync(
-      const JsonEncoder().convert(evidence),
-    );
+    evidenceFile.writeAsStringSync(const JsonEncoder().convert(evidence));
 
     _state = {
       ..._state,
       'lastCaptureTime': timestamp,
       'lastEvidencePath': evidenceFile.path,
       'lastSessionId': sessionId,
+      'lastOverlaySuccess': overlayResult.exitCode == 0,
     };
 
     _ctx.bus.publish(
@@ -122,32 +169,54 @@ class VerifyBlock implements Block {
       id: cmd.id,
       data: {
         'evidencePath': evidenceFile.path,
+        'windowPng': windowPng.path,
+        'overlayPng': overlayPng.path,
+        'metaJson': metaJson.path,
         'evidence': evidence,
       },
     );
   }
 
   Future<Ack> _verifyCrop(Command cmd) async {
-    final cropMeta = cmd.payload?['cropMeta'];
-    final expectedRect = cmd.payload?['expectedRect'];
-
-    if (cropMeta is! Map || expectedRect is! Map) {
+    final evidencePath = cmd.payload?['evidencePath'];
+    if (evidencePath is! String || evidencePath.trim().isEmpty) {
       return Ack.fail(
         id: cmd.id,
         code: 'invalid_payload',
-        message:
-            'verifyCrop requires payload.cropMeta and payload.expectedRect',
+        message: 'verifyCrop requires payload.evidencePath',
       );
     }
 
-    // TODO: Implement actual crop verification logic
-    // This would compare cropMeta.frame with expectedRect
+    final file = File(evidencePath);
+    if (!file.existsSync()) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'evidence_not_found',
+        message: 'Evidence file not found: $evidencePath',
+      );
+    }
+
+    final evidence = const JsonDecoder().convert(file.readAsStringSync());
+    if (evidence is! Map) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_evidence',
+        message: 'Evidence is not a JSON object',
+      );
+    }
+
+    final overlaySuccess = evidence['overlaySuccess'] == true;
+    final overlayPng = evidence['overlayPng'];
+    final verified =
+        overlaySuccess && overlayPng is String && overlayPng.isNotEmpty;
 
     final result = {
-      'verified': true,
-      'message': 'Crop verification passed',
-      'cropMeta': cropMeta,
-      'expectedRect': expectedRect,
+      'verified': verified,
+      'message': verified
+          ? 'Crop verification passed (overlay generated)'
+          : 'Crop verification failed (overlay missing)',
+      'evidencePath': evidencePath,
+      'overlayPng': overlayPng,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
 
