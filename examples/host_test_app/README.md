@@ -19,6 +19,9 @@
 .gitignore
 .idea/modules.xml
 .idea/workspace.xml
+DEBUG_NOTES.md
+ERROR_LOG.md
+UPDATE_HISTORY.md
 analysis_options.yaml
 lib/bandwidth_test_app.dart
 lib/main.dart

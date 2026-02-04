@@ -73,6 +73,9 @@
 ### Files
 
 ```
+DEBUG_NOTES.md
+ERROR_LOG.md
+UPDATE_HISTORY.md
 analysis_options.yaml
 lib/itermremote_protocol.dart
 pubspec.lock

@@ -38,6 +38,9 @@
 ### Files
 
 ```
+DEBUG_NOTES.md
+ERROR_LOG.md
+UPDATE_HISTORY.md
 lib/observability.dart
 lib/run_logger.dart
 pubspec.lock

@@ -21,8 +21,11 @@
 .gitignore
 CHANGELOG.md
 CONTRIBUTING.md
+DEBUG_NOTES.md
+ERROR_LOG.md
 LICENSE
 NOTICE
+UPDATE_HISTORY.md
 analysis_options.yaml
 android/build.gradle
 android/gradle.properties

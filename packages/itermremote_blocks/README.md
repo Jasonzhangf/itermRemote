@@ -46,6 +46,9 @@
 ### Files
 
 ```
+DEBUG_NOTES.md
+ERROR_LOG.md
+UPDATE_HISTORY.md
 analysis_options.yaml
 lib/itermremote_blocks.dart
 pubspec.lock
