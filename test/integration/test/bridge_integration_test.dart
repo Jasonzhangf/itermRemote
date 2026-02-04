@@ -22,7 +22,19 @@ void main() {
     test('[E2][E3][E4] scripts are available before running integration',
         () async {
       // Ensure mock scripts are available.
-      await Process.run('bash', ['scripts/test/setup_iterm2_mock.sh']);
+      // Also export mock env var for this process: ITerm2Bridge checks
+      // Platform.environment to decide which script suffix to use.
+      final res = await Process.run(
+        'bash',
+        ['-lc', 'bash scripts/test/setup_iterm2_mock.sh'],
+        environment: {
+          ...Platform.environment,
+          'ITERMREMOTE_ITERM2_MOCK': '1',
+        },
+      );
+      expect(res.exitCode, 0);
+      // Match mock mode used in CI test harness.
+      Platform.environment['ITERMREMOTE_ITERM2_MOCK'] = '1';
 
       final sessions = await bridge.getSessions();
       expect(sessions, isNotEmpty);
