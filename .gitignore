@@ -18,3 +18,5 @@ Pods/
 DerivedData/
 *.xcuserstate
 
+# Android / Gradle
+.gradle/
