@@ -21,9 +21,6 @@ UPDATE_HISTORY.md
 android/.gitignore
 android/build.gradle.kts
 android/gradle.properties
-android/gradlew
-android/gradlew.bat
-android/local.properties
 android/settings.gradle.kts
 lib/main.dart
 pubspec.lock

@@ -75,15 +75,18 @@ for m in "${modules[@]}"; do
       ! -path "./build/*" \
       ! -path "./Pods/*" \
       ! -path "./DerivedData/*" \
+      ! -path "./.git/*" \
+      ! -path "*/.git/*" \
       ! -name "README.md" \
       ! -name "README_MANUAL.md" \
       ! -name "*.iml" \
       ! -name ".metadata" \
-      ! -name "android/gradlew" \
-      ! -name "android/gradlew.bat" \
-      ! -name "android/local.properties" \
+      ! -path "./android/gradlew" \
+      ! -path "./android/gradlew.bat" \
+      ! -path "./android/local.properties" \
       ! -path "./.idea/*" \
       ! -name ".flutter-plugins-dependencies" \
+      ! -name ".DS_Store" \
       | sed 's|^\./||' \
       | sort
   ) >> "$tmp"
