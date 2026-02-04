@@ -1,16 +1,30 @@
 # host_daemon
 
-A new Flutter project.
+(MANUAL section missing: create README_MANUAL.md to add human notes.)
 
-## Getting Started
+---
+## AUTO-GEN (以下内容由脚本生成，禁止手工修改)
+---
 
-This project is a starting point for a Flutter application.
+### Module Path
+`apps/host_daemon`
 
-A few resources to get you started if this is your first Flutter project:
+### pubspec.yaml
+`pubspec.yaml`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Files
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```
+.gitignore
+.idea/modules.xml
+.idea/workspace.xml
+.metadata
+README.md
+analysis_options.yaml
+host_daemon.iml
+lib/main.dart
+macos/.gitignore
+pubspec.lock
+pubspec.yaml
+test/widget_test.dart
+```

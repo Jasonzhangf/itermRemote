@@ -1,86 +1,35 @@
 # android_client
 
-## Module Overview
+(MANUAL section missing: create README_MANUAL.md to add human notes.)
 
-Flutter Android client for receiving iTerm2 streams (video/chat) and sending user input back to the host.
+---
+## AUTO-GEN (以下内容由脚本生成，禁止手工修改)
+---
 
-## Architecture
+### Module Path
+`apps/android_client`
+
+### pubspec.yaml
+`pubspec.yaml`
+
+### Files
 
 ```
-Dart/Flutter module with lib/.
-Contains service-layer logic.
-Contains UI widgets.
-Has module-local tests.
+.metadata
+DEBUG_NOTES.md
+ERROR_LOG.md
+README.md
+UPDATE_HISTORY.md
+android/.gitignore
+android/android_client_android.iml
+android/build.gradle.kts
+android/gradle.properties
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/settings.gradle.kts
+lib/main.dart
+pubspec.lock
+pubspec.yaml
+test/app_test.dart
 ```
-
-## File Structure
-
-### lib/main.dart
-
-No documentation available.
-
-### lib/pages/chat_page.dart
-
-No documentation available.
-
-### lib/pages/connect_page.dart
-
-No documentation available.
-
-### lib/pages/streaming_page.dart
-
-No documentation available.
-
-### lib/widgets/chat/chat_history_view.dart
-
-No documentation available.
-
-### lib/widgets/chat/chat_input_field.dart
-
-No documentation available.
-
-### lib/widgets/streaming/panel_switcher.dart
-
-No documentation available.
-
-### lib/widgets/streaming/video_renderer.dart
-
-No documentation available.
-
-### test/app_test.dart
-
-No documentation available.
-
-### test/pages/chat_page_test.dart
-
-No documentation available.
-
-### test/pages/connect_page_test.dart
-
-No documentation available.
-
-### test/pages/streaming_page_test.dart
-
-No documentation available.
-
-## User Notes
-
-<!-- USER -->
-
-<!-- /USER -->
-
-## Debug Notes
-
-No debug notes documented yet.
-
-## Error Log
-
-No errors recorded yet.
-
-## Update History
-
-## [0.1.0] - Initial Release
-- Initial module structure
-- CI gates enabled
-- Placeholder implementation
-
