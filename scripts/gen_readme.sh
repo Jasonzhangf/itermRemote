@@ -88,7 +88,7 @@ for m in "${modules[@]}"; do
       ! -name "local.properties" \
       ! -name ".DS_Store" \
       | sed 's|^\./||' \
-      | sort
+      | LC_ALL=C sort
   ) >> "$tmp"
   echo "\`\`\`" >> "$tmp"
 
