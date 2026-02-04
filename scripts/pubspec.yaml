@@ -7,3 +7,5 @@ environment:
 
 dependencies:
   web_socket_channel: ^2.4.0
+  itermremote_protocol:
+    path: ../packages/itermremote_protocol
