@@ -4,6 +4,7 @@ set -e
 mkdir -p scripts/python
 
 cat > scripts/python/iterm2_sources_mock.py << 'EOF'
+#!/usr/bin/env python3
 import json
 
 def main():
@@ -34,6 +35,7 @@ if __name__ == '__main__':
 EOF
 
 cat > scripts/python/iterm2_activate_and_crop_mock.py << 'EOF'
+#!/usr/bin/env python3
 import json
 import sys
 
@@ -51,6 +53,7 @@ if __name__ == '__main__':
 EOF
 
 cat > scripts/python/iterm2_send_text_mock.py << 'EOF'
+#!/usr/bin/env python3
 import json
 
 def main():
@@ -61,6 +64,7 @@ if __name__ == '__main__':
 EOF
 
 cat > scripts/python/iterm2_session_reader_mock.py << 'EOF'
+#!/usr/bin/env python3
 import base64
 import json
 import sys
