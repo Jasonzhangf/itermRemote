@@ -45,6 +45,8 @@ class CaptureBlock implements Block {
       switch (cmd.action) {
         case 'activateAndComputeCrop':
           return await _activateAndComputeCrop(cmd);
+        case 'selectSource':
+          return await _selectSource(cmd);
         case 'getState':
           return Ack.ok(id: cmd.id, data: _state);
         default:
@@ -95,5 +97,51 @@ class CaptureBlock implements Block {
 
     return Ack.ok(id: cmd.id, data: {'meta': meta});
   }
-}
 
+  Future<Ack> _selectSource(Command cmd) async {
+    final type = cmd.payload?['type'];
+    final windowId = cmd.payload?['windowId'];
+    final iterm2SessionId = cmd.payload?['iterm2SessionId'];
+
+    if (type is! String || type.trim().isEmpty) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_payload',
+        message: 'selectSource requires payload.type (screen/window/iterm2)',
+      );
+    }
+
+    _state = {
+      ..._state,
+      'selectedSourceType': type,
+      'selectedWindowId': windowId,
+      'selectedITerm2SessionId': iterm2SessionId,
+    };
+
+    if (type == 'iterm2' &&
+        iterm2SessionId is String &&
+        iterm2SessionId.isNotEmpty) {
+      final meta = await _iterm2.activateSession(iterm2SessionId);
+      _state = {
+        ..._state,
+        'lastActivateMeta': meta,
+      };
+    }
+
+    _ctx.bus.publish(
+      Event(
+        version: itermremoteProtocolVersion,
+        source: name,
+        event: 'sourceSelected',
+        ts: DateTime.now().millisecondsSinceEpoch,
+        payload: {
+          'type': type,
+          'windowId': windowId,
+          'iterm2SessionId': iterm2SessionId,
+        },
+      ),
+    );
+
+    return Ack.ok(id: cmd.id, data: _state);
+  }
+}

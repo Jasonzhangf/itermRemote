@@ -15,6 +15,8 @@ import '../../modules/blocks/event_bus.dart';
 import '../../modules/blocks/echo_block.dart';
 import '../../modules/blocks/iterm2_block.dart';
 import '../../modules/blocks/capture_block.dart';
+import '../../modules/blocks/webrtc_block.dart';
+import '../../modules/blocks/verify_block.dart';
 
 /// Orchestrates the daemon startup sequence and block wiring.
 class DaemonOrchestrator {
@@ -83,6 +85,12 @@ class DaemonOrchestrator {
 
     final capture = CaptureBlock(iterm2: bridge);
     registry.register(capture);
+
+    final webrtc = WebRTCBlock();
+    registry.register(webrtc);
+
+    final verify = VerifyBlock();
+    registry.register(verify);
 
     for (final b in registry.all) {
       await b.init(ctx);

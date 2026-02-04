@@ -56,6 +56,8 @@ class ITerm2Block implements Block {
           return await _readSessionBuffer(cmd);
         case 'getWindowFrames':
           return await _getWindowFrames(cmd);
+        case 'getCropMeta':
+          return await _getCropMeta(cmd);
         default:
           return Ack.fail(
             id: cmd.id,
@@ -150,6 +152,24 @@ class ITerm2Block implements Block {
   Future<Ack> _getWindowFrames(Command cmd) async {
     final frames = await _withTimeout(_bridge.getWindowFrames());
     return Ack.ok(id: cmd.id, data: {'windows': frames});
+  }
+
+  Future<Ack> _getCropMeta(Command cmd) async {
+    final sessionId = cmd.payload?['sessionId'];
+    if (sessionId is! String || sessionId.trim().isEmpty) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_payload',
+        message: 'getCropMeta requires payload.sessionId',
+      );
+    }
+    final meta = await _withTimeout(_bridge.activateSession(sessionId));
+    _state = {
+      ..._state,
+      'lastCropMetaSessionId': sessionId,
+      'lastCropMeta': meta,
+    };
+    return Ack.ok(id: cmd.id, data: {'meta': meta});
   }
 
   Future<T> _withTimeout<T>(Future<T> future) {

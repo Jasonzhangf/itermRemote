@@ -79,6 +79,12 @@ class DaemonOrchestrator {
     final capture = CaptureBlock(iterm2: bridge);
     registry.register(capture);
 
+    final webrtc = WebRTCBlock();
+    registry.register(webrtc);
+
+    final verify = VerifyBlock();
+    registry.register(verify);
+
     for (final b in registry.all) {
       await b.init(ctx);
     }
