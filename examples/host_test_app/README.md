@@ -15,10 +15,7 @@
 ### Files
 
 ```
-.flutter-plugins-dependencies
 .gitignore
-.idea/modules.xml
-.idea/workspace.xml
 DEBUG_NOTES.md
 ERROR_LOG.md
 UPDATE_HISTORY.md

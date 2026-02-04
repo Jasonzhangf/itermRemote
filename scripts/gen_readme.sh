@@ -79,6 +79,11 @@ for m in "${modules[@]}"; do
       ! -name "README_MANUAL.md" \
       ! -name "*.iml" \
       ! -name ".metadata" \
+      ! -name "android/gradlew" \
+      ! -name "android/gradlew.bat" \
+      ! -name "android/local.properties" \
+      ! -path "./.idea/*" \
+      ! -name ".flutter-plugins-dependencies" \
       | sed 's|^\./||' \
       | sort
   ) >> "$tmp"
