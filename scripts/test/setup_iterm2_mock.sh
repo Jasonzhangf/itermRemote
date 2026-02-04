@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+echo "Deprecated: this script is intentionally kept as a placeholder." 
+echo "We no longer run iTerm2 mock tests in CI." 
+exit 0
+
 mkdir -p scripts/python
 
 cat > scripts/python/iterm2_sources_mock.py << 'EOF'

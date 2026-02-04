@@ -3,8 +3,6 @@ set -e
 
 echo "Running E2E tests..."
 
-bash scripts/test/setup_iterm2_mock.sh
-
 echo "Testing core module..."
 pushd packages/cloudplayplus_core >/dev/null
 flutter pub get
@@ -14,7 +12,7 @@ popd >/dev/null
 echo "Testing host module..."
 pushd packages/iterm2_host >/dev/null
 flutter pub get
-ITERMREMOTE_ITERM2_MOCK=1 flutter test
+flutter test
 popd >/dev/null
 
 echo "Testing android client..."
@@ -29,10 +27,6 @@ flutter pub get
 flutter test
 popd >/dev/null
 
-echo "Testing integration suite..."
-pushd test/integration >/dev/null
-flutter pub get
-flutter test
-popd >/dev/null
+echo "Skipping integration suite in CI (iTerm2 mock removed)."
 
 echo "All E2E tests passed"

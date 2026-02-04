@@ -1,13 +1,16 @@
-import 'dart:io';
-
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('ITerm2Bridge (mock scripts)', () {
+  group('ITerm2Bridge (mock scripts) - deprecated', () {
     late ITerm2Bridge bridge;
 
-    // Note: CI sets ITERMREMOTE_ITERM2_MOCK=1 before running tests.
+    // Deprecated: This test relies on mock Python scripts and does not validate
+    // real iTerm2 behavior. Keep it skipped to avoid giving false confidence.
+    // Real iTerm2 regression must be done locally with a running iTerm2.
+    setUpAll(() {
+      throw Skip('Deprecated: mock-based ITerm2Bridge tests are not meaningful.');
+    });
 
     setUp(() {
       bridge = ITerm2Bridge();

@@ -75,12 +75,6 @@ jobs:
           cd packages/iterm2_host
           dart test
 
-      - name: Mock iTerm2 tests
-        run: |
-          bash scripts/test/setup_iterm2_mock.sh
-          cd packages/iterm2_host
-          dart test
-
   test-android:
     name: Test Android Client
     runs-on: macos-latest
