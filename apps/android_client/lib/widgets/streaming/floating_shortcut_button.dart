@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// 悬浮快捷键按钮 - 固定在右下角
 /// 
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 /// - 点击展开工具栏
 /// - 工具栏包含流控制、方向键、自定义快捷键
 /// - 完全悬浮，不占底部导航
+/// - 支持展开/收起动画
 class FloatingShortcutButton extends StatefulWidget {
   const FloatingShortcutButton({super.key});
 
@@ -13,15 +15,75 @@ class FloatingShortcutButton extends StatefulWidget {
   State<FloatingShortcutButton> createState() => _FloatingShortcutButtonState();
 }
 
-class _FloatingShortcutButtonState extends State<FloatingShortcutButton> {
+class _FloatingShortcutButtonState extends State<FloatingShortcutButton>
+    with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  
+  // 快捷键配置
+  final List<_ShortcutConfig> _shortcuts = const [
+    _ShortcutConfig(keys: '⌘C', label: 'Copy', keyCode: LogicalKeyboardKey.keyC),
+    _ShortcutConfig(keys: '⌘V', label: 'Paste', keyCode: LogicalKeyboardKey.keyV),
+    _ShortcutConfig(keys: '⌘Z', label: 'Undo', keyCode: LogicalKeyboardKey.keyZ),
+    _ShortcutConfig(keys: '⌘Tab', label: 'Switch', keyCode: LogicalKeyboardKey.tab),
+    _ShortcutConfig(keys: 'F5', label: 'Refresh', keyCode: LogicalKeyboardKey.f5),
+    _ShortcutConfig(keys: 'Esc', label: 'Escape', keyCode: LogicalKeyboardKey.escape),
+    _ShortcutConfig(keys: '⌘A', label: 'Select', keyCode: LogicalKeyboardKey.keyA),
+    _ShortcutConfig(keys: '⌘S', label: 'Save', keyCode: LogicalKeyboardKey.keyS),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+      if (_isExpanded) {
+        _animationController.forward();
+      } else {
+        _animationController.reverse();
+      }
+    });
+  }
+
+  void _sendKeyEvent(LogicalKeyboardKey key, {bool isModifier = false}) {
+    // TODO: 集成到 ConnectionService 发送按键事件
+    debugPrint('Sending key: ${key.keyId}');
+    HapticFeedback.lightImpact();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return Stack(
       children: [
+        // 背景遮罩（展开时显示）
+        if (_isExpanded)
+          GestureDetector(
+            onTap: _toggleExpanded,
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+            ),
+          ),
+        
         // 展开的工具栏
         if (_isExpanded)
           Positioned(
@@ -29,92 +91,178 @@ class _FloatingShortcutButtonState extends State<FloatingShortcutButton> {
             right: 0,
             bottom: 0,
             child: _ShortcutToolbar(
-              onClose: () => setState(() => _isExpanded = false),
+              shortcuts: _shortcuts,
+              onClose: _toggleExpanded,
+              onShortcutTap: (config) => _sendKeyEvent(config.keyCode),
+              animation: _scaleAnimation,
             ),
           ),
         
         // 悬浮按钮
-        if (!_isExpanded)
-          Positioned(
-            right: 16,
-            bottom: 16,
+        Positioned(
+          right: 16,
+          bottom: _isExpanded ? 280 : 16,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             child: Material(
               elevation: 8,
               borderRadius: BorderRadius.circular(28),
               child: InkWell(
-                onTap: () => setState(() => _isExpanded = true),
+                onTap: _toggleExpanded,
                 borderRadius: BorderRadius.circular(28),
                 child: Container(
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.75),
+                    color: _isExpanded 
+                        ? Colors.red.withOpacity(0.8)
+                        : Colors.black.withOpacity(0.75),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
                       color: Colors.white.withOpacity(0.18),
                       width: 1,
                     ),
                   ),
-                  child: Icon(
-                    Icons.keyboard,
-                    color: theme.colorScheme.primary,
-                    size: 28,
+                  child: AnimatedRotation(
+                    turns: _isExpanded ? 0.125 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      _isExpanded ? Icons.close : Icons.keyboard,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
+        ),
       ],
     );
   }
 }
 
+/// 快捷键配置
+class _ShortcutConfig {
+  final String keys;
+  final String label;
+  final LogicalKeyboardKey keyCode;
+  
+  const _ShortcutConfig({
+    required this.keys,
+    required this.label,
+    required this.keyCode,
+  });
+}
+
 /// 快捷键工具栏
 class _ShortcutToolbar extends StatelessWidget {
+  final List<_ShortcutConfig> shortcuts;
   final VoidCallback onClose;
+  final void Function(_ShortcutConfig) onShortcutTap;
+  final Animation<double> animation;
 
-  const _ShortcutToolbar({required this.onClose});
+  const _ShortcutToolbar({
+    required this.shortcuts,
+    required this.onClose,
+    required this.onShortcutTap,
+    required this.animation,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return Material(
-      elevation: 16,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.92),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 流控制行
-                _StreamControlRow(onClose: onClose),
-                const SizedBox(height: 12),
-                
-                // 快捷键区域
-                SizedBox(
-                  height: 80,
-                  child: Row(
-                    children: [
-                      // 方向键组
-                      _ArrowKeysGroup(),
-                      const SizedBox(width: 12),
-                      
-                      // 自定义快捷键（横向滚动）
-                      Expanded(
-                        child: _CustomShortcutsBar(),
-                      ),
-                    ],
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: animation.value,
+          alignment: Alignment.bottomCenter,
+          child: Opacity(
+            opacity: animation.value,
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        elevation: 16,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.92),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 拖动条
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  
+                  // 流控制行
+                  _StreamControlRow(onClose: onClose),
+                  const SizedBox(height: 16),
+                  
+                  // 快捷键区域
+                  SizedBox(
+                    height: 90,
+                    child: Row(
+                      children: [
+                        // 方向键组
+                        _ArrowKeysGroup(
+                          onUp: () => onShortcutTap(
+                            const _ShortcutConfig(
+                              keys: '↑', 
+                              label: 'Up', 
+                              keyCode: LogicalKeyboardKey.arrowUp,
+                            ),
+                          ),
+                          onDown: () => onShortcutTap(
+                            const _ShortcutConfig(
+                              keys: '↓', 
+                              label: 'Down', 
+                              keyCode: LogicalKeyboardKey.arrowDown,
+                            ),
+                          ),
+                          onLeft: () => onShortcutTap(
+                            const _ShortcutConfig(
+                              keys: '←', 
+                              label: 'Left', 
+                              keyCode: LogicalKeyboardKey.arrowLeft,
+                            ),
+                          ),
+                          onRight: () => onShortcutTap(
+                            const _ShortcutConfig(
+                              keys: '→', 
+                              label: 'Right', 
+                              keyCode: LogicalKeyboardKey.arrowRight,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // 自定义快捷键（横向滚动）
+                        Expanded(
+                          child: _CustomShortcutsBar(
+                            shortcuts: shortcuts,
+                            onTap: onShortcutTap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -139,6 +287,7 @@ class _StreamControlRow extends StatelessWidget {
           label: 'Desktop',
           onTap: () {
             // TODO: 切换到 Desktop 模式
+            debugPrint('Switch to Desktop mode');
           },
         ),
         const SizedBox(width: 8),
@@ -149,6 +298,7 @@ class _StreamControlRow extends StatelessWidget {
           label: 'Target',
           onTap: () {
             // TODO: 打开目标选择器
+            debugPrint('Open target selector');
           },
         ),
         const SizedBox(width: 8),
@@ -159,6 +309,7 @@ class _StreamControlRow extends StatelessWidget {
           label: 'IME',
           onTap: () {
             // TODO: IME 设置
+            debugPrint('Open IME settings');
           },
         ),
         
@@ -178,11 +329,23 @@ class _StreamControlRow extends StatelessWidget {
 
 /// 方向键组
 class _ArrowKeysGroup extends StatelessWidget {
+  final VoidCallback onUp;
+  final VoidCallback onDown;
+  final VoidCallback onLeft;
+  final VoidCallback onRight;
+
+  const _ArrowKeysGroup({
+    required this.onUp,
+    required this.onDown,
+    required this.onLeft,
+    required this.onRight,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 120,
-      height: 80,
+      height: 90,
       child: Stack(
         children: [
           // 上
@@ -190,32 +353,26 @@ class _ArrowKeysGroup extends StatelessWidget {
             top: 0,
             left: 40,
             child: _ArrowButton(
-              icon: Icons.arrow_drop_up,
-              onTap: () {
-                // TODO: Send Arrow Up
-              },
+              icon: Icons.keyboard_arrow_up,
+              onTap: onUp,
             ),
           ),
           // 左
           Positioned(
-            top: 30,
+            top: 25,
             left: 0,
             child: _ArrowButton(
-              icon: Icons.arrow_left,
-              onTap: () {
-                // TODO: Send Arrow Left
-              },
+              icon: Icons.keyboard_arrow_left,
+              onTap: onLeft,
             ),
           ),
           // 右
           Positioned(
-            top: 30,
+            top: 25,
             right: 0,
             child: _ArrowButton(
-              icon: Icons.arrow_right,
-              onTap: () {
-                // TODO: Send Arrow Right
-              },
+              icon: Icons.keyboard_arrow_right,
+              onTap: onRight,
             ),
           ),
           // 下
@@ -223,10 +380,8 @@ class _ArrowKeysGroup extends StatelessWidget {
             bottom: 0,
             left: 40,
             child: _ArrowButton(
-              icon: Icons.arrow_drop_down,
-              onTap: () {
-                // TODO: Send Arrow Down
-              },
+              icon: Icons.keyboard_arrow_down,
+              onTap: onDown,
             ),
           ),
         ],
@@ -237,30 +392,27 @@ class _ArrowKeysGroup extends StatelessWidget {
 
 /// 自定义快捷键条
 class _CustomShortcutsBar extends StatelessWidget {
+  final List<_ShortcutConfig> shortcuts;
+  final void Function(_ShortcutConfig) onTap;
+
+  const _CustomShortcutsBar({
+    required this.shortcuts,
+    required this.onTap,
+  });
+
   @override
   Widget build(BuildContext context) {
-    final shortcuts = [
-      ('⌘C', 'Copy'),
-      ('⌘V', 'Paste'),
-      ('⌘Z', 'Undo'),
-      ('⌘Tab', 'Switch'),
-      ('F5', 'Refresh'),
-      ('Esc', 'Escape'),
-    ];
-
     return ListView.builder(
       scrollDirection: Axis.horizontal,
       itemCount: shortcuts.length,
       itemBuilder: (context, index) {
-        final (keys, label) = shortcuts[index];
+        final config = shortcuts[index];
         return Padding(
           padding: const EdgeInsets.only(right: 8),
           child: _ShortcutChip(
-            keys: keys,
-            label: label,
-            onTap: () {
-              // TODO: Send shortcut
-            },
+            keys: config.keys,
+            label: config.label,
+            onTap: () => onTap(config),
           ),
         );
       },
