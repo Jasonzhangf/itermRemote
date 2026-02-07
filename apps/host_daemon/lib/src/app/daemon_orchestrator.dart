@@ -10,6 +10,8 @@ import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:daemon_ws/ws_server.dart';
 
 import 'package:itermremote_blocks/itermremote_blocks.dart';
+import 'package:itermremote_blocks/src/blocks/verify_block.dart';
+import 'package:itermremote_blocks/src/blocks/webrtc_block.dart';
 
 /// Orchestrates the daemon startup sequence and block wiring.
 class DaemonOrchestrator {
@@ -83,9 +85,12 @@ class DaemonOrchestrator {
     registry.register(webrtc);
 
     final verify = VerifyBlock();
+    verify.setDependencies(iterm2Bridge: bridge);
     registry.register(verify);
 
     for (final b in registry.all) {
+      // ignore: avoid_print
+      print('[orchestrator] init block: ${b.name} (${b.runtimeType})');
       await b.init(ctx);
     }
     // ignore: avoid_print

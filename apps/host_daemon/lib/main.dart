@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -7,8 +8,10 @@ import 'src/app/daemon_orchestrator.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Ensure the daemon can find Python scripts when launched from /Applications.
   const repoRoot = '/Users/fanzhang/Documents/github/itermRemote';
+  final env = Map<String, String>.from(Platform.environment);
+  env['ITERMREMOTE_REPO_ROOT'] = repoRoot;
+  env['ITERMREMOTE_PY_TIMEOUT_MS'] = env['ITERMREMOTE_PY_TIMEOUT_MS'] ?? '10000';
   final stateDirPath = Platform.environment['ITERMREMOTE_STATE_DIR'];
 
   final orchestrator = DaemonOrchestrator(
@@ -18,6 +21,16 @@ Future<void> main() async {
 
   await orchestrator.initialize();
 
+  // Keep the process alive in headless mode
+  final headless = (Platform.environment['ITERMREMOTE_HEADLESS'] ?? '').trim() == '1' ||
+                   const String.fromEnvironment('ITERMREMOTE_HEADLESS') == '1';
+  if (headless) {
+    // Keep the Dart VM alive
+    Timer.periodic(const Duration(seconds: 1), (_) {
+      // Heartbeat to keep process alive
+    });
+  }
+
   runApp(const DaemonApp());
 }
 
@@ -26,11 +39,9 @@ class DaemonApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // In headless mode we keep the window effectively invisible and non-interactive.
-    // We still need a Flutter view hierarchy for plugins that require a running
-    // Flutter engine.
-    final headless =
-        (Platform.environment['ITERMREMOTE_HEADLESS'] ?? '').trim() == '1';
+    final headlessEnv = (Platform.environment['ITERMREMOTE_HEADLESS'] ?? '').trim() == '1';
+    final headlessDefine = const String.fromEnvironment('ITERMREMOTE_HEADLESS') == '1';
+    final headless = headlessEnv || headlessDefine;
     if (headless) {
       return const MaterialApp(home: SizedBox.shrink());
     }

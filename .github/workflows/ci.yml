@@ -183,6 +183,21 @@ jobs:
           cd apps/host_console
           flutter build macos
 
+  # WS API schema/build check (pure logic, no iTerm2)
+  check-ws-api:
+    name: Check WS API
+    runs-on: macos-latest
+    needs: build-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+
+      - name: Check WS API
+        run: |
+          bash scripts/ci/check_ws_api.sh
+
   # NOTE:
   # iTerm2-related E2E (panel switching / crop / loopback / screenshots) is NOT
   # suitable for GitHub-hosted CI runners due to missing iTerm2 app, GUI session,

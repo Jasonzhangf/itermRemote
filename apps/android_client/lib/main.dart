@@ -1,8 +1,11 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'pages/connect_page.dart';
-import 'pages/streaming_page.dart';
-import 'pages/chat_page.dart';
+import 'theme.dart';
+import 'widgets/desktop_simulator.dart';
+import 'pages/main_shell.dart';
 
 /// iTerm2 Remote Android client entry point.
 void main() {
@@ -14,15 +17,18 @@ class ITerm2RemoteApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     return MaterialApp(
       title: 'iTerm2 Remote',
-      theme: ThemeData.dark(),
-      routes: {
-        '/': (_) => const ConnectPage(),
-        '/streaming': (_) => const StreamingPage(),
-        '/chat': (_) => const ChatPage(),
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.dark(),
+      builder: (context, child) {
+        if (!isDesktop) return child ?? const SizedBox.shrink();
+        return DesktopSimulator(
+          child: child ?? const SizedBox.shrink(),
+        );
       },
-      initialRoute: '/',
+      home: const MainShell(),
     );
   }
 }

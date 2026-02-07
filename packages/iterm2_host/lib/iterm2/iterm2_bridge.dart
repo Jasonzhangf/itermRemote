@@ -121,9 +121,9 @@ class ITerm2Bridge {
     final candidates = <String>[
       // Add the script path itself (may be absolute).
       effectiveScriptPath,
-      '../../$effectiveScriptPath',
-      '../../../$effectiveScriptPath',
-      '../../../../$effectiveScriptPath',
+      // '../../$effectiveScriptPath',
+      // '../../../$effectiveScriptPath',
+      // '../../../../$effectiveScriptPath',
       // macOS sandboxed Flutter apps run with a container cwd. When launched
       // from our repo, scripts usually live relative to the workspace root.
       if (configuredRoot.isNotEmpty) '$configuredRoot/$effectiveScriptPath',
@@ -165,13 +165,16 @@ class ITerm2Bridge {
     final timeoutMs = int.tryParse(
             Platform.environment['ITERMREMOTE_PY_TIMEOUT_MS'] ?? '') ??
         3000;
+    final repoRoot = (this.repoRoot ?? Platform.environment['ITERMREMOTE_REPO_ROOT'] ?? '').trim();
     final proc = await Process.start(
       bin,
       [scriptPath, ...args],
+      workingDirectory: repoRoot.isNotEmpty ? repoRoot : null,
       environment: {
         // iTerm2 Python API can hang waiting for prompt in non-UI contexts.
         'ITERMREMOTE_NO_PROMPT': '1',
         'PYTHONUNBUFFERED': '1',
+        if (repoRoot.isNotEmpty) 'ITERMREMOTE_REPO_ROOT': repoRoot,
       },
     );
     final stdoutFuture = proc.stdout.transform(utf8.decoder).join();

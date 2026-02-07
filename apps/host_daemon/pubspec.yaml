@@ -37,7 +37,7 @@ dependencies:
   itermremote_protocol:
     path: ../../packages/itermremote_protocol
   itermremote_blocks:
-    path: ../../src/modules/blocks
+    path: ../../packages/itermremote_blocks
   iterm2_host:
     path: ../../packages/iterm2_host
 

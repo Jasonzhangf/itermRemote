@@ -11,27 +11,39 @@ class ChatHistoryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     if (messages.isEmpty) {
       return const Center(
-        child: Text('No messages yet'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 48, color: Colors.white24),
+            SizedBox(height: 12),
+            Text('No messages yet', style: TextStyle(color: Colors.white54)),
+          ],
+        ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final msg = messages[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: theme.colorScheme.surface,
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.1)),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(msg),
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                msg,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
           ),
         );
@@ -39,4 +51,3 @@ class ChatHistoryView extends StatelessWidget {
     );
   }
 }
-

@@ -11,6 +11,8 @@ dependencies:
     path: ../itermremote_protocol
   iterm2_host:
     path: ../iterm2_host
+  image: ^4.7.2
+  flutter_webrtc: ^0.9.48
 
 dev_dependencies:
   lints: ^3.0.0

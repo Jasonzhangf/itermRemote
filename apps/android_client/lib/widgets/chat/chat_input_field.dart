@@ -33,27 +33,44 @@ class _ChatInputFieldState extends State<ChatInputField> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: Row(
           children: [
             Expanded(
-              child: TextField(
-                controller: _controller,
-                maxLines: null,
-                decoration: const InputDecoration(
-                  hintText: 'Type a message...',
-                  border: OutlineInputBorder(),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: theme.colorScheme.onSurface.withOpacity(0.2)),
                 ),
-                onSubmitted: (_) => _send(),
+                child: TextField(
+                  controller: _controller,
+                  maxLines: null,
+                  decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  ),
+                  onSubmitted: (_) => _send(),
+                ),
               ),
             ),
             const SizedBox(width: 12),
-            FilledButton(
-              onPressed: _send,
-              child: const Text('Send'),
+            Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                onPressed: _send,
+                icon: const Icon(Icons.send, color: Colors.white),
+                tooltip: 'Send message',
+              ),
             ),
           ],
         ),
@@ -61,4 +78,3 @@ class _ChatInputFieldState extends State<ChatInputField> {
     );
   }
 }
-

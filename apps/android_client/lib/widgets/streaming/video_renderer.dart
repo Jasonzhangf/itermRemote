@@ -10,10 +10,34 @@ class VideoRenderer extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      color: theme.colorScheme.surface,
+      color: const Color(0xFF09090B),
       alignment: Alignment.center,
-      child: const Text('Video stream surface (placeholder)'),
+      child: Stack(
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.videocam, size: 64, color: theme.colorScheme.onSurface.withOpacity(0.2)),
+                const SizedBox(height: 16),
+                Text(
+                  'Video Stream',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Placeholder for WebRTC surface',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.3),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
-

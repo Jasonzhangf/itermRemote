@@ -121,6 +121,7 @@
 2. **测试先行**：新增任何功能必须有完整单元测试；可做 E2E 的最终必须做一次端到端测试。
 3. **持续可用**：每次提交必须能构建、能通过测试、能通过 CI。
 4. **测试后人工确认**：每次跑完测试（单测/E2E/回环截图验证等）必须人工检查输出（日志/截图/视频/指标）是否符合预期；禁止只看“测试通过”就判定完成。
+5. **日志强制检查（硬性）**：所有 app 启动后必须检查日志。发现任何错误/异常/overflow（如 RenderFlex overflowed）必须立即修复，修复完成后才能继续后续任务。nn### 日志检查流程nn- **启动命令**：`bash scripts/run_host_console.sh`n- **检查日志**：`bash scripts/check_app_logs.sh`n- **硬性规则**：发现错误 → 必须修复 → 修复后重新检查 → 无错误才能继续nn### 手动检查nn```bashn# 启动并捕获日志ncd apps/host_console && flutter run -d macos --debug 2>&1 | tee /tmp/itermremote_console.lognn# 检查错误（另一个终端）nbash scripts/check_app_logs.sh /tmp/itermremote_console.logn```
 
 ## Build Gate（强制）
 
@@ -214,3 +215,51 @@ MANUAL 部分与 AUTO-GEN 部分之间必须有明确的分隔线：
 
 3. **测试与功能绑定**：
    - 功能实现与测试必须在同一提交中出现
+
+## Runtime Log Policy (Mandatory)
+
+All apps must follow this strict log-check workflow:
+
+### 1. Single Instance Enforcement
+- Before starting any app, kill existing instances
+- Use `scripts/run_host_console.sh` which handles this automatically
+
+### 2. Log Capture (Mandatory)
+- All app output must be captured to log files
+- Default location: `/tmp/{app_name}_console.log`
+- Use `tee` to see output and save to file simultaneously
+
+### 3. Error Detection (Hard Rule)
+After every startup, automatically check logs for:
+- `overflowed` → RenderFlex overflow errors
+- `RenderFlex` → Layout overflow
+- `assertion was thrown` → Runtime assertions
+
+**ANY error = MUST FIX before continuing**
+
+### 4. Standard Commands
+
+```bash
+# Start app with automatic log checking
+bash scripts/run_host_console.sh
+
+# Manual check of existing logs
+bash scripts/check_app_logs.sh /tmp/itermremote_console.log
+```
+
+### 5. Workflow
+
+1. Start app → Logs captured automatically
+2. Wait for startup (8 seconds)
+3. Script checks logs automatically
+4. If errors found:
+   - App is killed
+   - Errors displayed
+   - **Must fix before re-running**
+5. If no errors:
+   - App continues running
+   - Proceed with development
+
+### 6. Violation
+
+Skipping log checks or ignoring errors is a workflow violation.
