@@ -1,0 +1,7 @@
+server/admin/* linguist-generated
+server/admin/** linguist-generated
+examples/ref/* linguist-generated
+examples/ref/** linguist-generated
+*.png linguist-generated
+*.jpg linguist-generated
+*.jpeg linguist-generated
