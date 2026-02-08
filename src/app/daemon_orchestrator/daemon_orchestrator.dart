@@ -90,6 +90,7 @@ class DaemonOrchestrator {
     registry.register(webrtc);
 
     final verify = VerifyBlock();
+    verify.setDependencies(iterm2Bridge: bridge);
     registry.register(verify);
 
     for (final b in registry.all) {

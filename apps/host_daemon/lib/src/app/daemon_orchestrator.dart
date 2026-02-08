@@ -96,7 +96,7 @@ class DaemonOrchestrator {
     // ignore: avoid_print
     print('[orchestrator] blocks initialized');
 
-    final host = '127.0.0.1';
+    final host = '0.0.0.0';
     final envPortStr = Platform.environment['ITERMREMOTE_WS_PORT'];
     final envPort = int.tryParse(envPortStr ?? '');
     final port = envPort ?? _wsPort ?? 8766;
