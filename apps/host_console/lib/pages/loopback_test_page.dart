@@ -86,7 +86,7 @@ class _LoopbackTestPageState extends State<LoopbackTestPage> {
           version: itermremoteProtocolVersion,
           id: _generateId(),
           target: 'iterm2',
-          action: 'getSessions',
+          action: 'listSessions',
         ),
       );
 

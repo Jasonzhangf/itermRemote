@@ -14,10 +14,9 @@ type User struct {
 	PasswordHash string    `gorm:"type:varchar(255);not null"`
 	Email        string    `gorm:"type:varchar(255);unique"`
 	Nickname     string    `gorm:"type:varchar(64)"`
-	LastIPv6     string    `gorm:"type:varchar(45)"`
+	LastIPv6     string    `gorm:"type:inet"`
 	IPv6Verified bool      `gorm:"default:false"`
 	Status       int16     `gorm:"default:1"`
-	Role         string    `gorm:"type:varchar(16);default:user"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	LastLoginAt  *time.Time
@@ -31,8 +30,8 @@ type Device struct {
 	DeviceName    string    `gorm:"type:varchar(128)"`
 	DeviceType    string    `gorm:"type:varchar(32)"`
 	SupportsIPv6  bool      `gorm:"default:true"`
-	LastIP        string    `gorm:"type:varchar(45)"`
-	LastIPv6      string    `gorm:"type:varchar(45)"`
+	LastIP        string    `gorm:"type:inet"`
+	LastIPv6      string    `gorm:"type:inet"`
 	LastSeenAt    *time.Time
 	IsOnline      bool `gorm:"default:false"`
 	CreatedAt     time.Time
@@ -46,8 +45,8 @@ type Session struct {
 	DeviceID          string    `gorm:"type:varchar(64)"`
 	AccessTokenHash   string    `gorm:"type:varchar(255);not null"`
 	RefreshTokenHash  string    `gorm:"type:varchar(255);not null"`
-	IP                string    `gorm:"type:varchar(45)"`
-	IPv6              string    `gorm:"type:varchar(45)"`
+	IP                string    `gorm:"type:inet"`
+	IPv6              string    `gorm:"type:inet"`
 	UserAgent         string    `gorm:"type:text"`
 	ExpiresAt         time.Time `gorm:"not null"`
 	CreatedAt         time.Time
@@ -73,24 +72,6 @@ func (d *Device) BeforeCreate(tx *gorm.DB) error {
 func (s *Session) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
-	}
-	return nil
-}
-
-// PasswordResetToken 密码重置令牌
-type PasswordResetToken struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
-	Token     string    `gorm:"type:varchar(255);unique;not null"`
-	ExpiresAt time.Time `gorm:"not null"`
-	UsedAt    *time.Time
-	CreatedAt time.Time
-	User      User `gorm:"foreignKey:UserID"`
-}
-
-func (p *PasswordResetToken) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == uuid.Nil {
-		p.ID = uuid.New()
 	}
 	return nil
 }

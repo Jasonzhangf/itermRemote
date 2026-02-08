@@ -32,12 +32,11 @@ func main() {
 	log.Println("Database connected successfully")
 
 	// 自动迁移
-	if err := db.AutoMigrate(&User{}, &Device{}, &Session{}, &PasswordResetToken{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &Device{}, &Session{}); err != nil {
+
+	// 初始化 Redisn	initRedis()n
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
-
-	// 初始化 Redis
-	initRedis()
 
 	// 初始化路由
 	router := gin.Default()
@@ -45,8 +44,8 @@ func main() {
 	// 健康检查
 	router.GET("/api/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":       "ok",
-			"version":      "1.0.0",
+			"status": "ok",
+			"version": "1.0.0",
 			"ipv6_enabled": true,
 		})
 	})
@@ -57,35 +56,16 @@ func main() {
 		v1.POST("/register", Register)
 		v1.POST("/login", Login)
 		v1.POST("/token/refresh", RefreshToken)
-		v1.GET("/ice/servers", GetICEServers)
-
-		// 密码重置接口 (无需认证)
-		v1.POST("/password/reset/request", RequestPasswordReset)
-		v1.POST("/password/reset/confirm", ConfirmPasswordReset)
 
 		// 需要认证的路由
 		auth := v1.Group("")
 		auth.Use(JWTAuthMiddleware())
 		{
-			// 管理员接口
-			admin := auth.Group("/admin")
-			admin.Use(AdminOnly())
-			{
-				admin.POST("/reset-password", AdminResetPassword)
-			}
-
-			auth.POST("/device/status", ReportDeviceStatus)
-		auth.GET("/devices", GetDevicesList)
-		auth.GET("/_debug/routes", func(c *gin.Context) {
-			c.JSON(200, gin.H{"routes": []string{"/device/status", "/devices"}})
-		})
-
 			auth.GET("/user/profile", GetUserProfile)
 			auth.PUT("/user/profile", UpdateUserProfile)
 			auth.DELETE("/user/account", DeleteAccount)
 			auth.POST("/telemetry/ice", HandleICETelemetry)
 			auth.POST("/logs/error", HandleErrorLog)
-			auth.POST("/password/change", ChangePassword)
 		}
 	}
 

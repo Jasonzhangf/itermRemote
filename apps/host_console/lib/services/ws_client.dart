@@ -3,9 +3,6 @@ import 'dart:convert';
 
 import 'package:itermremote_protocol/itermremote_protocol.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/io.dart';
-
-import 'auth_service.dart';
 
 /// WebSocket client for connecting to host_daemon.
 ///
@@ -29,12 +26,7 @@ class WsClient {
   Future<void> connect() async {
     if (_connected) return;
 
-    final headers = <String, dynamic>{};
-    if (AuthService.instance.isAuthenticated) {
-      headers['Authorization'] = 'Bearer ${AuthService.instance.accessToken}';
-    }
-
-    _channel = IOWebSocketChannel.connect(Uri.parse(url), headers: headers);
+    _channel = WebSocketChannel.connect(Uri.parse(url));
     _connected = true;
 
     _channel!.stream.listen(

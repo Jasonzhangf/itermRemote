@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -368,7 +369,6 @@ func GetUserProfile(c *gin.Context) {
 		"nickname":      user.Nickname,
 		"ipv6_verified": user.IPv6Verified,
 		"created_at":    user.CreatedAt,
-		"role":         user.Role,
 	})
 }
 

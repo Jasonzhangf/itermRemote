@@ -1,17 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:android_client/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:android_client/main.dart';
-
 void main() {
-  testWidgets('App builds and shows login page', (WidgetTester tester) async {
+  testWidgets('App builds without crashing', (WidgetTester tester) async {
     await tester.pumpWidget(const ITerm2RemoteApp());
-    
-    // Wait for auth service to init
-    await tester.pumpAndSettle();
-    
-    // Should show login page
-    expect(find.text('ItermRemote'), findsOneWidget);
-    expect(find.text('登录到您的账号'), findsOneWidget);
+
+    expect(find.text('Connect to Host'), findsOneWidget);
+    expect(find.text('Add Host'), findsOneWidget);
   });
 }

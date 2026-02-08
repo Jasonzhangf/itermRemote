@@ -20,38 +20,3 @@ DerivedData/
 
 # Android / Gradle
 .gradle/
-
-# Secrets / Credentials
-.env
-*.env
-**/.env
-*.pem
-*.key
-*.secret
-
-# Build artifacts
-*.apk
-*.app
-*.ipa
-*.framework
-*.xcarchive
-dist/
-build/
-coverage/
-
-# Server binaries
-server/api/api-server
-server/ws/ws-server
-
-# Temp files
-*.orig
-*.patch
-*.tmp
-*.log
-
-# Test artifacts
-test_results/
-screenshots/
-
-# macOS
-*.xcuserdatad

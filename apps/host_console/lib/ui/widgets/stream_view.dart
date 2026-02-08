@@ -1,42 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
 import '../../logic/app_state.dart';
 import '../theme.dart';
 import '../../models/connection_model.dart';
+import '../pages/preview_page.dart';
 
-/// Real WebRTC stream view for host console
-class StreamView extends StatefulWidget {
+/// Center stream view - shows the remote desktop/window/panel stream.
+/// This is currently a static placeholder (UI only). Real rendering will be
+/// wired up via WS + WebRTC later.
+class StreamView extends StatelessWidget {
   const StreamView({super.key});
-
-  @override
-  State<StreamView> createState() => _StreamViewState();
-}
-
-class _StreamViewState extends State<StreamView> {
-  final _videoRenderer = RTCVideoRenderer();
-
-  @override
-  void initState() {
-    super.initState();
-    _videoRenderer.initialize();
-  }
-
-  @override
-  void dispose() {
-    _videoRenderer.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final stream = state.remoteStream;
-    final hasStream = stream != null;
-    
-    if (hasStream) {
-      _videoRenderer.srcObject = stream;
-    }
 
     return Container(
       color: AppTheme.background,
@@ -44,7 +21,7 @@ class _StreamViewState extends State<StreamView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Stream header
+          // Stream header - responsive layout (no overflow)
           LayoutBuilder(
             builder: (context, c) {
               final narrow = c.maxWidth < 720;
@@ -121,99 +98,99 @@ class _StreamViewState extends State<StreamView> {
           ),
           const SizedBox(height: 16),
 
-          // Main video surface
+          // Main preview surface
           Expanded(
             child: Container(
               decoration: BoxDecoration(
                 color: AppTheme.surface,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppTheme.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: hasStream
-                    ? RTCVideoView(
-                        _videoRenderer,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-                      )
-                    : _buildPlaceholder(state),
+              child: Stack(
+                children: [
+                  // Subtle pattern background
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _GridPainter(),
+                    ),
+                  ),
+
+                  // Placeholder content
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceElevated,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.border),
+                          ),
+                          child: const Icon(
+                            Icons.desktop_windows_outlined,
+                            size: 32,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Preview Surface',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          state.isStreaming
+                              ? 'Streaming… (UI placeholder)'
+                              : 'Select a source and start streaming',
+                          style: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Fake overlay controls
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: _buildInfoPill(
+                      icon: Icons.speed,
+                      label: state.streamStats == null
+                          ? '— fps'
+                          : '${state.streamStats!.fps.toStringAsFixed(0)} fps',
+                    ),
+                  ),
+                  Positioned(
+                    right: 12,
+                    top: 12,
+                    child: _buildInfoPill(
+                      icon: Icons.aspect_ratio,
+                      label: state.streamStats == null
+                          ? '—×—'
+                          : '${state.streamStats!.width}×${state.streamStats!.height}',
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPlaceholder(AppState state) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _GridPainter(),
-          ),
-        ),
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceElevated,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppTheme.border),
-                ),
-                child: const Icon(
-                  Icons.desktop_windows_outlined,
-                  size: 32,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '等待连接',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                state.isStreaming
-                    ? '正在建立 WebRTC 连接...'
-                    : '点击下方 Start 开始捕获屏幕',
-                style: const TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          left: 12,
-          top: 12,
-          child: _buildInfoPill(
-            icon: Icons.speed,
-            label: state.streamStats == null
-                ? '— fps'
-                : '${state.streamStats!.fps.toStringAsFixed(0)} fps',
-          ),
-        ),
-        Positioned(
-          right: 12,
-          top: 12,
-          child: _buildInfoPill(
-            icon: Icons.aspect_ratio,
-            label: state.streamStats == null
-                ? '—×—'
-                : '${state.streamStats!.width}×${state.streamStats!.height}',
-          ),
-        ),
-      ],
     );
   }
 
@@ -224,9 +201,10 @@ class _StreamViewState extends State<StreamView> {
     } else if (mode == CaptureMode.window) {
       return 'Window Capture';
     } else {
+      // CaptureMode.iterm2Panel
       return state.selectedPanel == null
           ? 'iTerm2 Panel (not selected)'
-          : 'iTerm2 Panel • ${state.selectedPanel!.title}';
+          : 'iTerm2 Panel • ${state.selectedPanel!.title} • ${state.selectedPanel!.detail}';
     }
   }
 

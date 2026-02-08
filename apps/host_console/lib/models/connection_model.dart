@@ -85,20 +85,3 @@ class Rect {
   final double x, y, width, height;
   const Rect(this.x, this.y, this.width, this.height);
 }
-
-/// Stream statistics
-class StreamStats {
-  final double fps;
-  final int width;
-  final int height;
-  final int bitrate;
-  final int latency;
-
-  const StreamStats({
-    required this.fps,
-    required this.width,
-    required this.height,
-    required this.bitrate,
-    required this.latency,
-  });
-}
