@@ -55,3 +55,12 @@ screenshots/
 
 # macOS
 *.xcuserdatad
+
+# Local admin assets
+server/admin/
+node_modules/
+
+# Local images / notes
+IMG*.jpg
+examples/ref/
+TASKS.md
