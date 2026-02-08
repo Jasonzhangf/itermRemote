@@ -17,6 +17,7 @@ build/
 Pods/
 DerivedData/
 *.xcuserstate
+*.xcuserdatad
 
 # Android / Gradle
 .gradle/
@@ -36,7 +37,6 @@ DerivedData/
 *.framework
 *.xcarchive
 dist/
-build/
 coverage/
 
 # Server binaries
@@ -53,14 +53,11 @@ server/ws/ws-server
 test_results/
 screenshots/
 
-# macOS
-*.xcuserdatad
+# Local notes/images
+TASKS.md
+IMG*.jpg
+examples/ref/
 
 # Local admin assets
 server/admin/
 node_modules/
-
-# Local images / notes
-IMG*.jpg
-examples/ref/
-TASKS.md
