@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/connection_service.dart';
+import '../services/device_service.dart';
 
-/// Connection page for device discovery and host selection.
-///
-/// In Phase-3, this is a placeholder with basic UI structure.
-/// Future phases will add actual device discovery logic.
 class ConnectPage extends StatefulWidget {
   const ConnectPage({super.key});
 
@@ -12,153 +10,117 @@ class ConnectPage extends StatefulWidget {
 }
 
 class _ConnectPageState extends State<ConnectPage> {
-  bool _isScanning = false;
-
-  /// List of discovered hosts (placeholder).
-  final List<Map<String, String>> _discoveredHosts = [
-    {'id': 'host-1', 'name': 'MacBook Pro', 'ip': '192.168.1.100'},
-    {'id': 'host-2', 'name': 'iMac', 'ip': '192.168.1.101'},
-  ];
+  List<DeviceInfo> _devices = [];
+  bool _loading = true;
+  String? _error;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Connect to Host'),
-        actions: [
-          IconButton(
-            icon: _isScanning
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() => _isScanning = true);
-              Future.delayed(const Duration(seconds: 2), () {
-                if (mounted) setState(() => _isScanning = false);
-              });
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      // 先上报自己的 IP
+      await DeviceService.instance.reportDeviceStatus(isOnline: true);
+
+      // 获取设备列表
+      final devices = await DeviceService.instance.getDevices();
+      setState(() {
+        _devices = devices;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _connectToDevice(DeviceInfo device) async {
+    // 按顺序尝试: IPv6 公网 -> IPv4 Tailscale -> IPv4 LAN
+    final targets = <String>[];
+    targets.addAll(device.ipv6Public);
+    targets.addAll(device.ipv4Tailscale);
+    targets.addAll(device.ipv4Lan);
+
+    for (final ip in targets) {
+      try {
+        await ConnectionService.instance.connect(
+          hostId: device.deviceId,
+          hostIp: ip,
+          port: 8766,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已连接: $ip')),
+          );
+        }
+        return;
+      } catch (e) {
+        // 尝试下一个
+        continue;
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法连接到该设备')),
+      );
+    }
+  }
+
+  Widget _buildDeviceCard(DeviceInfo device) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: ListTile(
+        leading: const Icon(Icons.desktop_windows),
+        title: Text(device.deviceName.isEmpty ? device.deviceId : device.deviceName),
+        subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Text(
-                'Available Hosts',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface.withOpacity(0.9),
-                ),
-              ),
-            ),
-            Expanded(
-              child: _discoveredHosts.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Searching for hosts...',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _discoveredHosts.length,
-                      itemBuilder: (context, index) {
-                        final host = _discoveredHosts[index];
-                        return _HostCard(
-                          name: host['name'] ?? 'Unknown',
-                          ip: host['ip'] ?? '',
-                          onTap: () {
-                            Navigator.of(context).pushNamed('/streaming');
-                          },
-                        );
-                      },
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    // TODO: Implement manual host connection.
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Host Manually'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
-            ),
+            if (device.ipv6Public.isNotEmpty)
+              Text('IPv6: ${device.ipv6Public.first}'),
+            if (device.ipv4Tailscale.isNotEmpty)
+              Text('TS: ${device.ipv4Tailscale.first}'),
+            if (device.ipv4Lan.isNotEmpty)
+              Text('LAN: ${device.ipv4Lan.first}'),
           ],
         ),
+        trailing: const Icon(Icons.arrow_forward_ios),
+        onTap: () => _connectToDevice(device),
       ),
     );
   }
-}
-
-class _HostCard extends StatelessWidget {
-  const _HostCard({
-    required this.name,
-    required this.ip,
-    required this.onTap,
-  });
-
-  final String name;
-  final String ip;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(Icons.computer, color: theme.colorScheme.primary, size: 32),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(ip, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6))),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: theme.colorScheme.onSurface.withOpacity(0.4)),
-              ],
-            ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('连接设备'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadDevices,
           ),
-        ),
+        ],
       ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text('错误: $_error'))
+              : _devices.isEmpty
+                  ? const Center(child: Text('暂无可用设备'))
+                  : ListView(
+                      children: _devices.map(_buildDeviceCard).toList(),
+                    ),
     );
   }
 }

@@ -3,14 +3,8 @@ import 'connect_page.dart';
 import 'streaming_page.dart';
 import 'settings_page.dart';
 import 'shortcuts_page.dart';
+import '../services/connection_service.dart';
 
-/// Main shell with bottom navigation.
-///
-/// Provides navigation between:
-/// - Connect (device list)
-/// - Streaming (video + controls)
-/// - Shortcuts (custom keyboard)
-/// - Settings
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -27,6 +21,17 @@ class _MainShellState extends State<MainShell> {
     const ShortcutsPage(),
     const SettingsPage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-switch to Streaming tab when connected
+    ConnectionService.instance.connectionState.listen((state) {
+      if (state == HostConnectionState.connected && mounted) {
+        setState(() => _currentIndex = 1);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +54,7 @@ class _MainShellState extends State<MainShell> {
           ),
           NavigationDestination(
             icon: Icon(Icons.desktop_mac),
-            label: 'Control',
+            label: 'Stream',
           ),
           NavigationDestination(
             icon: Icon(Icons.keyboard),

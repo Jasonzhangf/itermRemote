@@ -1,45 +1,56 @@
-import 'dart:async';
+import "dart:io";
+import "package:flutter/material.dart";
+import "package:flutter_webrtc/flutter_webrtc.dart";
+import "package:itermremote_protocol/itermremote_protocol.dart";
+import "../models/connection_model.dart";
+import "../services/ws_client.dart";
+import "../services/device_service.dart";
+import "dart:async";
 
-import 'package:flutter/foundation.dart';
-import '../models/connection_model.dart';
-import '../services/ws_client.dart';
-import 'package:itermremote_protocol/itermremote_protocol.dart';
-
-/// Global application state with real WebSocket connection to daemon
+/// Global application state with real WebSocket + WebRTC connection to daemon
 class AppState extends ChangeNotifier {
   // Connection
   final List<ConnectionModel> connections = [];
   ConnectionModel? activeConnection;
-  
-  // WebSocket client
+
   WsClient? _wsClient;
   bool _isConnected = false;
-  String? _errorMessage;
-  
-  // Stream state
-  bool isStreaming = false;
-  CaptureMode captureMode = CaptureMode.iterm2Panel;
-  
+  String _lastStatus = "disconnected";
+
+  // Device status reporting
+  Timer? _statusReportTimer;
+
   // iTerm2 panels (now from real daemon)
-  final List<PanelInfo> panels = [];
-  PanelInfo? selectedPanel;
+  List<PanelInfo> panels = [];
+
+  // WebRTC
+  RTCPeerConnection? _peerConnection;
+  MediaStream? _remoteStream;
+  bool _isStreaming = false;
+  CaptureMode _captureMode = CaptureMode.screen;
+  PanelInfo? _selectedPanel;
+  StreamStats? _streamStats;
+
+  // UI state
   bool _isLoadingPanels = false;
-  
-  // Stats
-  StreamStats? streamStats;
-  
-  // Getters
+  String? _errorMessage;
+
   bool get isConnected => _isConnected;
-  String? get errorMessage => _errorMessage;
-  bool get isLoadingPanels => _isLoadingPanels;
+  String get lastStatus => _lastStatus;
   WsClient? get wsClient => _wsClient;
+  bool get isStreaming => _isStreaming;
+  CaptureMode get captureMode => _captureMode;
+  PanelInfo? get selectedPanel => _selectedPanel;
+  StreamStats? get streamStats => _streamStats;
+  MediaStream? get remoteStream => _remoteStream;
+  bool get isLoadingPanels => _isLoadingPanels;
+  String? get errorMessage => _errorMessage;
 
   AppState() {
-    // Add local daemon connection
     connections.add(const ConnectionModel(
-      id: 'local-daemon',
-      name: 'Local Daemon',
-      host: 'localhost',
+      id: "local-daemon",
+      name: "Local Daemon",
+      host: "127.0.0.1",
       port: 8766,
       status: ConnectionStatus.disconnected,
       type: ConnectionType.host,
@@ -47,207 +58,274 @@ class AppState extends ChangeNotifier {
     activeConnection = connections.first;
   }
 
-  /// Connect to the daemon via WebSocket
-  Future<void> connect() async {
-    if (_isConnected) return;
-    
-    final conn = activeConnection;
-    if (conn == null) return;
-    
+  /// Resolve local IP for daemon connection (IPv6 -> Tailscale -> LAN IPv4)
+  Future<String> _resolveLocalConnectIp() async {
     try {
-      _errorMessage = null;
-      notifyListeners();
-      
-      final url = 'ws://${conn.host}:${conn.port}';
-      _wsClient = WsClient(url: url);
-      await _wsClient!.connect();
-      
-      // Subscribe to events
-      _wsClient!.eventStream.listen(_handleEvent);
-      
-      _isConnected = true;
-      _updateConnectionStatus(ConnectionStatus.connected);
-      
-      // Fetch panels after connection
-      await refreshPanels();
-      
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Connection failed: $e';
-      _isConnected = false;
-      _updateConnectionStatus(ConnectionStatus.error);
-      notifyListeners();
-    }
-  }
+      final interfaces = await NetworkInterface.list(includeLinkLocal: false, includeLoopback: false);
 
-  /// Disconnect from daemon
-  Future<void> disconnect() async {
-    _wsClient?.close();
-    _wsClient = null;
-    _isConnected = false;
-    _updateConnectionStatus(ConnectionStatus.disconnected);
-    panels.clear();
-    notifyListeners();
-  }
+      final ipv6 = <String>[];
+      final ipv4Ts = <String>[];
+      final ipv4Lan = <String>[];
 
-  /// Refresh panels from daemon via ITerm2Block
-  Future<void> refreshPanels() async {
-    if (!_isConnected || _wsClient == null) return;
-    
-    _isLoadingPanels = true;
-    notifyListeners();
-    
-    try {
-      final cmd = Command(
-        version: 1,
-        id: 'get-sessions-${DateTime.now().millisecondsSinceEpoch}',
-        target: 'iterm2',
-        action: 'getSessions',
-      );
-      
-      final ack = await _wsClient!.sendCommand(cmd);
-      
-      if (ack.success) {
-        final sessions = ack.data?['sessions'] as List<dynamic>?;
-        if (sessions != null) {
-          panels.clear();
-          for (var i = 0; i < sessions.length; i++) {
-            final s = sessions[i] as Map<String, dynamic>;
-            panels.add(PanelInfo(
-              id: s['id'] ?? 'panel-$i',
-              title: s['name'] ?? 'Panel $i',
-              detail: '${s['profileName'] ?? ''} · ${s['command'] ?? ''}',
-              index: i,
-              frame: const Rect(0, 0, 0, 0), // Will be populated via getCropMeta
-              isActive: s['isActive'] ?? false,
-            ));
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          final address = addr.address;
+          if (addr.type == InternetAddressType.IPv6) {
+            ipv6.add(address);
+          } else if (addr.type == InternetAddressType.IPv4) {
+            if (interface.name.contains('tailscale') ||
+                interface.name.contains('ts0') ||
+                address.startsWith('100.')) {
+              ipv4Ts.add(address);
+            } else {
+              ipv4Lan.add(address);
+            }
           }
         }
-      } else {
-        _errorMessage = 'Failed to get panels: ${ack.error?.message ?? 'unknown error'}';
       }
-    } catch (e) {
-      _errorMessage = 'Error refreshing panels: $e';
-    } finally {
-      _isLoadingPanels = false;
-      notifyListeners();
-    }
+
+      if (ipv6.isNotEmpty) return ipv6.first;
+      if (ipv4Ts.isNotEmpty) return ipv4Ts.first;
+      if (ipv4Lan.isNotEmpty) return ipv4Lan.first;
+    } catch (_) {}
+
+    return "127.0.0.1";
   }
 
-  /// Activate a panel via ITerm2Block
-  Future<void> activatePanel(PanelInfo panel) async {
-    if (!_isConnected || _wsClient == null) return;
-    
+  /// Connect to the daemon via WebSocket + WebRTC
+  Future<void> connect() async {
+    if (_isConnected) return;
+
+    final conn = activeConnection;
+    if (conn == null) return;
+
+    _updateConnectionStatus(ConnectionStatus.connecting, "connecting");
+
     try {
-      final cmd = Command(
-        version: 1,
-        id: 'activate-${DateTime.now().millisecondsSinceEpoch}',
-        target: 'iterm2',
-        action: 'activateSession',
-        payload: {'sessionId': panel.id},
-      );
-      
-      final ack = await _wsClient!.sendCommand(cmd);
-      
-      if (ack.success) {
-        selectedPanel = panel;
-        // Update active status
-        for (var i = 0; i < panels.length; i++) {
-          final p = panels[i];
-          panels[i] = PanelInfo(
-            id: p.id,
-            title: p.title,
-            detail: p.detail,
-            index: p.index,
-            frame: p.frame,
-            isActive: p.id == panel.id,
-          );
-        }
-        notifyListeners();
-      } else {
-        _errorMessage = 'Failed to activate panel: ${ack.error?.message ?? 'unknown error'}';
-        notifyListeners();
-      }
+      final ip = await _resolveLocalConnectIp();
+      final url = "ws://$ip:${conn.port}";
+      _wsClient = WsClient(url: url);
+      await _wsClient!.connect();
+
+      _isConnected = true;
+      _lastStatus = "connected";
+      _updateConnectionStatus(ConnectionStatus.connected, "connected");
+
+      await _createPeerConnection();
+      await _startStatusReporting();
+
+      notifyListeners();
     } catch (e) {
-      _errorMessage = 'Error activating panel: $e';
+      _isConnected = false;
+      _lastStatus = "failed: $e";
+      _errorMessage = e.toString();
+      _updateConnectionStatus(ConnectionStatus.error, "error");
       notifyListeners();
     }
   }
 
-  void _handleEvent(Event event) {
-    // Handle daemon events (e.g., panel changes, stream updates)
-    if (event.event == 'activated') {
-      // Refresh panels when a session is activated elsewhere
-      refreshPanels();
-    }
-  }
+  Future<void> _createPeerConnection() async {
+    print("[WebRTC] Creating peer connection");
+    _peerConnection = await createPeerConnection({
+      "iceServers": [{"urls": "stun:stun.l.google.com:19302"}],
+    });
 
-  void _updateConnectionStatus(ConnectionStatus status) {
-    if (activeConnection != null) {
-      final idx = connections.indexWhere((c) => c.id == activeConnection!.id);
-      if (idx >= 0) {
-        connections[idx] = ConnectionModel(
-          id: activeConnection!.id,
-          name: activeConnection!.name,
-          host: activeConnection!.host,
-          port: activeConnection!.port,
-          status: status,
-          type: activeConnection!.type,
-        );
-        activeConnection = connections[idx];
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      print("[WebRTC] onTrack fired! streams=${event.streams.length}");
+      if (event.streams.isNotEmpty) {
+        _remoteStream = event.streams.first;
+        print("[WebRTC] received remote stream - ID: ${_remoteStream!.id}");
+        _streamStats ??= const StreamStats(fps: 30, width: 0, height: 0, bitrate: 0, latency: 0);
+        notifyListeners();
+      }
+    };
+
+    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      print("[WebRTC] ICE candidate: ${candidate.candidate}");
+    };
+
+    _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
+      print("[WebRTC] Connection state: $state");
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        _isStreaming = false;
+        notifyListeners();
+      }
+    };
+
+    // Start loopback on daemon
+    await _sendCommand("webrtc", "startLoopback", {
+      "sourceType": "screen",
+      "fps": 30,
+      "bitrateKbps": 2000,
+    });
+
+    // Request offer
+    final offerAck = await _sendCommand("webrtc", "createOffer", {});
+    if (offerAck?.data != null) {
+      final data = offerAck!.data!;
+      final type = data['type'];
+      final sdp = data['sdp'];
+      if (type is String && sdp is String) {
+        await _handleSignaling({"type": type, "sdp": sdp});
       }
     }
   }
 
-  void setActiveConnection(ConnectionModel? conn) {
-    activeConnection = conn;
-    notifyListeners();
+  Future<Ack?> _sendCommand(String target, String action, Map<String, dynamic> payload) async {
+    if (_wsClient == null) return null;
+    final cmd = Command(
+      version: itermremoteProtocolVersion,
+      id: "cmd-${DateTime.now().millisecondsSinceEpoch}",
+      action: action,
+      target: target,
+      payload: payload,
+    );
+    return await _wsClient!.sendCommand(cmd);
   }
 
-  void setCaptureMode(CaptureMode mode) {
-    captureMode = mode;
-    notifyListeners();
+  Future<void> _handleSignaling(Map<String, dynamic> data) async {
+    final type = data["type"];
+    final sdp = data["sdp"];
+    print("[WebRTC] Handling signaling: type=$type");
+    if (type == "offer" && sdp != null) {
+      print("[WebRTC] Setting remote description (offer)");
+      await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, "offer"));
+      print("[WebRTC] Creating answer");
+      final answer = await _peerConnection!.createAnswer();
+      print("[WebRTC] Setting local description (answer)");
+      await _peerConnection!.setLocalDescription(answer);
+      print("[WebRTC] Sending answer to daemon");
+      await _sendCommand("webrtc", "setRemoteDescription", {
+        "type": "answer",
+        "sdp": answer.sdp,
+      });
+      _isStreaming = true;
+      notifyListeners();
+    }
   }
 
-  void setSelectedPanel(PanelInfo? panel) {
-    selectedPanel = panel;
-    notifyListeners();
+  void _updateConnectionStatus(ConnectionStatus status, String message) {
+    final conn = activeConnection;
+    if (conn == null) return;
+
+    final index = connections.indexOf(conn);
+    connections[index] = conn.copyWith(
+      status: status,
+      errorMessage: message,
+      lastConnected: status == ConnectionStatus.connected
+          ? DateTime.now()
+          : conn.lastConnected,
+    );
+    activeConnection = connections[index];
   }
 
   void setStreaming(bool streaming) {
-    isStreaming = streaming;
+    if (streaming && !_isStreaming) {
+      connect();
+    } else if (!streaming && _isStreaming) {
+      _isStreaming = false;
+      _remoteStream = null;
+      notifyListeners();
+    }
+  }
+
+  void setCaptureMode(CaptureMode mode) {
+    _captureMode = mode;
+    _selectedPanel = null;
+    _isStreaming = false;
+    _remoteStream = null;
     notifyListeners();
   }
 
-  void updateStats(StreamStats stats) {
-    streamStats = stats;
+  void selectPanel(PanelInfo panel) {
+    _selectedPanel = panel;
+    _captureMode = CaptureMode.iterm2Panel;
+    _isStreaming = false;
+    _remoteStream = null;
     notifyListeners();
   }
-  
+
+  Future<void> refreshPanels() async {
+    if (_wsClient == null) return;
+    _isLoadingPanels = true;
+    notifyListeners();
+    final ack = await _sendCommand("iterm2", "getSessions", {});
+    if (ack?.data != null) {
+      final sessions = ack!.data!['sessions'] as List? ?? [];
+      panels = _mapSessionsToPanels(sessions);
+    }
+    _isLoadingPanels = false;
+    notifyListeners();
+  }
+
+  List<PanelInfo> _mapSessionsToPanels(List sessions) {
+    final result = <PanelInfo>[];
+    for (var i = 0; i < sessions.length; i++) {
+      final s = sessions[i] as Map;
+      final id = s['sessionId'] ?? s['id'] ?? 'session-$i';
+      final title = s['title'] ?? 'Session';
+      final detail = s['connectionId'] ?? '';
+      final frame = s['frame'] as Map? ?? {};
+      result.add(PanelInfo(
+        id: id.toString(),
+        title: title.toString(),
+        detail: detail.toString(),
+        index: i,
+        frame: Rect(
+          (frame['x'] ?? 0).toDouble(),
+          (frame['y'] ?? 0).toDouble(),
+          (frame['w'] ?? frame['width'] ?? 0).toDouble(),
+          (frame['h'] ?? frame['height'] ?? 0).toDouble(),
+        ),
+      ));
+    }
+    return result;
+  }
+
+  Future<void> activatePanel(PanelInfo panel) async {
+    if (_wsClient == null) return;
+    await _sendCommand("iterm2", "activateSession", {"sessionId": panel.id});
+  }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();
   }
 
+  void disconnect() {
+    _peerConnection?.close();
+    _peerConnection = null;
+    _remoteStream = null;
+    _wsClient?.close();
+    _wsClient = null;
+    _isConnected = false;
+    _lastStatus = "disconnected";
+    _isStreaming = false;
+    _updateConnectionStatus(ConnectionStatus.disconnected, "disconnected");
+    _stopStatusReporting();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _stopStatusReporting();
+    _peerConnection?.close();
     _wsClient?.close();
     super.dispose();
   }
-}
 
-class StreamStats {
-  final double fps;
-  final int bitrate;
-  final int width;
-  final int height;
-  final int latency;
+  Future<void> _startStatusReporting() async {
+    await DeviceService.instance.reportDeviceStatus(isOnline: true);
+    _statusReportTimer?.cancel();
+    _statusReportTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => DeviceService.instance.reportDeviceStatus(isOnline: true),
+    );
+  }
 
-  const StreamStats({
-    required this.fps,
-    required this.bitrate,
-    required this.width,
-    required this.height,
-    required this.latency,
-  });
+  void _stopStatusReporting() {
+    DeviceService.instance.reportDeviceStatus(isOnline: false);
+    _statusReportTimer?.cancel();
+    _statusReportTimer = null;
+  }
 }

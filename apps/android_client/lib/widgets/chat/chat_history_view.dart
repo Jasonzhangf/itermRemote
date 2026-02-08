@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Chat history view placeholder.
 class ChatHistoryView extends StatelessWidget {
   final List<String> messages;
 
-  const ChatHistoryView({
-    super.key,
-    required this.messages,
-  });
+  const ChatHistoryView({super.key, required this.messages});
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +36,7 @@ class ChatHistoryView extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: Text(
-                msg,
-                style: theme.textTheme.bodyMedium,
-              ),
+              child: Text(msg, style: theme.textTheme.bodyMedium),
             ),
           ),
         );

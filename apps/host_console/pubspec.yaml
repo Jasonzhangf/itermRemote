@@ -19,6 +19,8 @@ dependencies:
   flutter_webrtc: ^0.9.48
   itermremote_protocol:
     path: ../../packages/itermremote_protocol
+  shared_preferences: ^2.5.4
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

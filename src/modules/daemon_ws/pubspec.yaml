@@ -10,7 +10,7 @@ dependencies:
   itermremote_protocol:
     path: ../../../packages/itermremote_protocol
   itermremote_blocks:
-    path: ../blocks
+    path: ../../../packages/itermremote_blocks
 
 dev_dependencies:
   lints: ^3.0.0

@@ -1,4 +1,4 @@
-version: '3.8'
+version: '2'
 
 services:
   postgres:
@@ -6,36 +6,22 @@ services:
     container_name: itermremote-postgres
     environment:
       POSTGRES_DB: itermremote
-      POSTGRES_USER: ${DB_USER:-itermremote}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-itermremote}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/migrations:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
-    networks:
-      - itermremote
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-itermremote}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
     container_name: itermremote-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     ports:
       - "6379:6379"
-    networks:
-      - itermremote
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
   api-server:
     build:
@@ -47,21 +33,20 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: itermremote
-      DB_USER: ${DB_USER:-itermremote}
-      DB_PASSWORD: ${DB_PASSWORD:-itermremote}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      JWT_SECRET: ${JWT_SECRET:-changeme-insecure-secret-key}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      TURN_SERVERS: ${TURN_SERVERS}
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
     ports:
       - "8080:8080"
-    networks:
-      - itermremote
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     restart: unless-stopped
 
   ws-server:
@@ -73,20 +58,38 @@ services:
       PORT: "8081"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      JWT_SECRET: ${JWT_SECRET:-changeme-insecure-secret-key}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      TURN_SERVERS: ${TURN_SERVERS}
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
     ports:
       - "8081:8081"
-    networks:
-      - itermremote
     depends_on:
       - redis
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: itermremote-admin
+    environment:
+      ADMIN_PORT: "3000"
+      API_URL: http://api-server:8080
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: itermremote
+      ADMIN_COOKIE_SECRET: ${ADMIN_COOKIE_SECRET}
+      ADMIN_RESET_PASSWORD: ${ADMIN_RESET_PASSWORD}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-server
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
-
-networks:
-  itermremote:
-    driver: bridge

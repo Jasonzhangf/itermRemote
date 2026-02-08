@@ -1,34 +1,42 @@
 import 'package:flutter/material.dart';
-
 import '../widgets/streaming/video_renderer.dart';
 import '../widgets/streaming/panel_switcher.dart';
 import '../widgets/streaming/floating_shortcut_button.dart';
+import '../services/connection_service.dart';
 
-/// Streaming page - remote control with video + touch interface.
 class StreamingPage extends StatefulWidget {
-  const StreamingPage({super.key});
+  const StreamingPage({super.key, this.hostId, this.hostName, this.hostIp});
+  final String? hostId;
+  final String? hostName;
+  final String? hostIp;
 
   @override
   State<StreamingPage> createState() => _StreamingPageState();
 }
 
 class _StreamingPageState extends State<StreamingPage> {
+  HostConnectionState _connectionState = HostConnectionState.disconnected;
+
+  @override
+  void initState() {
+    super.initState();
+    ConnectionService.instance.connectionState.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+    _connectionState = ConnectionService.instance.isConnected
+        ? HostConnectionState.connected
+        : HostConnectionState.disconnected;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Streaming'),
-      ),
+      appBar: AppBar(title: Text(widget.hostName ?? 'Streaming')),
       body: Stack(
         children: [
-          // Video surface
-          Positioned.fill(
-            child: _StreamingView(),
-          ),
-          
-          // Panel switcher (top)
+          Positioned.fill(child: _StreamingView(hostId: widget.hostId, connectionState: _connectionState)),
           Positioned(
             top: 0,
             left: 0,
@@ -38,11 +46,7 @@ class _StreamingPageState extends State<StreamingPage> {
               child: const PanelSwitcher(),
             ),
           ),
-          
-          // 悬浮快捷键按钮（固定右下角）
-          const Positioned.fill(
-            child: FloatingShortcutButton(),
-          ),
+          const Positioned.fill(child: FloatingShortcutButton()),
         ],
       ),
     );
@@ -50,14 +54,17 @@ class _StreamingPageState extends State<StreamingPage> {
 }
 
 class _StreamingView extends StatelessWidget {
-  const _StreamingView();
+  const _StreamingView({this.hostId, required this.connectionState});
+  final String? hostId;
+  final HostConnectionState connectionState;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isConnected = connectionState == HostConnectionState.connected;
     return Stack(
       children: [
-        const VideoRenderer(),
+        VideoRenderer(hostId: hostId),
         Positioned(
           top: 12,
           right: 12,
@@ -71,9 +78,16 @@ class _StreamingView extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.circle, color: theme.colorScheme.primary, size: 8),
+                Icon(
+                  Icons.circle,
+                  color: isConnected ? theme.colorScheme.primary : Colors.grey,
+                  size: 8,
+                ),
                 const SizedBox(width: 6),
-                Text('Connected', style: theme.textTheme.bodySmall?.copyWith(fontSize: 11)),
+                Text(
+                  isConnected ? 'Connected' : 'Disconnected',
+                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                ),
               ],
             ),
           ),

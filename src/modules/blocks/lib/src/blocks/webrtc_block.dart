@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
 
 import '../block.dart';
@@ -11,6 +12,9 @@ class WebRTCBlock implements Block {
   WebRTCBlock();
 
   late BlockContext _ctx;
+  RTCPeerConnection? _pc;
+  MediaStream? _localStream;
+  RTCRtpSender? _sender;
 
   Map<String, Object?> _state = const {
     'ready': false,
@@ -40,6 +44,7 @@ class WebRTCBlock implements Block {
 
   @override
   Future<void> dispose() async {
+    await _stopLoopback(null);
     _state = const {'ready': false, 'loopbackActive': false};
   }
 
@@ -51,6 +56,12 @@ class WebRTCBlock implements Block {
           return await _startLoopback(cmd);
         case 'stopLoopback':
           return await _stopLoopback(cmd);
+        case 'createOffer':
+          return await _createOffer(cmd);
+        case 'setRemoteDescription':
+          return await _setRemoteDescription(cmd);
+        case 'createAnswer':
+          return await _createAnswer(cmd);
         case 'getLoopbackStats':
           return await _getLoopbackStats(cmd);
         case 'getState':
@@ -75,6 +86,8 @@ class WebRTCBlock implements Block {
     final sourceType = cmd.payload?['sourceType'];
     final sourceId = cmd.payload?['sourceId'];
     final cropRect = cmd.payload?['cropRect'];
+    final fps = cmd.payload?['fps'] ?? 30;
+    final bitrateKbps = cmd.payload?['bitrateKbps'] ?? 1000;
 
     if (sourceType is! String || sourceType.trim().isEmpty) {
       return Ack.fail(
@@ -84,6 +97,32 @@ class WebRTCBlock implements Block {
       );
     }
 
+    // Setup constraints
+    final constraints = <String, dynamic>{
+      'audio': false,
+      'video': {
+        'deviceId': {'exact': sourceId},
+        'mandatory': {
+          'frameRate': fps,
+        },
+        'optional': {},
+        if (cropRect != null) 'cropRect': cropRect,
+      },
+    };
+
+    // Get user media
+    _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // Create peer connection
+    _pc = await createPeerConnection({
+      'iceServers': const [
+        {'urls': 'stun:stun.l.google.com:19302'},
+      ],
+    });
+
+    // Add track
+    final track = _localStream!.getVideoTracks().first;
+    _sender = await _pc!.addTrack(track, _localStream!);
     _state = {
       ..._state,
       'loopbackActive': true,
@@ -91,6 +130,8 @@ class WebRTCBlock implements Block {
       'loopbackSourceId': sourceId,
       'loopbackCropRect': cropRect,
       'loopbackStartTime': DateTime.now().millisecondsSinceEpoch,
+      'loopbackFps': fps,
+      'loopbackBitrateKbps': bitrateKbps,
     };
 
     _ctx.bus.publish(
@@ -103,6 +144,8 @@ class WebRTCBlock implements Block {
           'sourceType': sourceType,
           'sourceId': sourceId,
           'cropRect': cropRect,
+          'fps': fps,
+          'bitrateKbps': bitrateKbps,
         },
       ),
     );
@@ -110,24 +153,104 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd.id, data: _state);
   }
 
-  Future<Ack> _stopLoopback(Command cmd) async {
+  Future<Ack> _stopLoopback(Command? cmd) async {
+    if (_localStream != null) {
+      await _localStream!.dispose();
+      _localStream = null;
+    }
+    if (_pc != null) {
+      await _pc!.close();
+      _pc = null;
+    }
+    _sender = null;
+
     _state = {
       ..._state,
       'loopbackActive': false,
       'loopbackStopTime': DateTime.now().millisecondsSinceEpoch,
     };
 
-    _ctx.bus.publish(
-      Event(
-        version: itermremoteProtocolVersion,
-        source: name,
-        event: 'loopbackStopped',
-        ts: DateTime.now().millisecondsSinceEpoch,
-        payload: _state,
-      ),
-    );
+    if (cmd != null) {
+      _ctx.bus.publish(
+        Event(
+          version: itermremoteProtocolVersion,
+          source: name,
+          event: 'loopbackStopped',
+          ts: DateTime.now().millisecondsSinceEpoch,
+          payload: _state,
+        ),
+      );
+    }
 
-    return Ack.ok(id: cmd.id, data: _state);
+    return Ack.ok(id: cmd?.id ?? '', data: _state);
+  }
+
+  Future<Ack> _createOffer(Command cmd) async {
+    if (_pc == null) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'not_ready',
+        message: 'PeerConnection not initialized',
+      );
+    }
+
+    final offer = await _pc!.createOffer();
+    await _pc!.setLocalDescription(offer);
+
+    return Ack.ok(
+      id: cmd.id,
+      data: {
+        'type': 'offer',
+        'sdp': offer.sdp,
+      },
+    );
+  }
+
+  Future<Ack> _setRemoteDescription(Command cmd) async {
+    if (_pc == null) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'not_ready',
+        message: 'PeerConnection not initialized',
+      );
+    }
+
+    final type = cmd.payload?['type'];
+    final sdp = cmd.payload?['sdp'];
+
+    if (type is! String || sdp is! String) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_payload',
+        message: 'setRemoteDescription requires type and sdp',
+      );
+    }
+
+    final description = RTCSessionDescription(sdp, type);
+    await _pc!.setRemoteDescription(description);
+
+    return Ack.ok(id: cmd.id, data: {'success': true});
+  }
+
+  Future<Ack> _createAnswer(Command cmd) async {
+    if (_pc == null) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'not_ready',
+        message: 'PeerConnection not initialized',
+      );
+    }
+
+    final answer = await _pc!.createAnswer();
+    await _pc!.setLocalDescription(answer);
+
+    return Ack.ok(
+      id: cmd.id,
+      data: {
+        'type': 'answer',
+        'sdp': answer.sdp,
+      },
+    );
   }
 
   Future<Ack> _getLoopbackStats(Command cmd) async {
