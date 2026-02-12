@@ -12,6 +12,7 @@ import 'package:daemon_ws/ws_server.dart';
 import 'package:itermremote_blocks/itermremote_blocks.dart';
 import 'package:itermremote_blocks/src/blocks/verify_block.dart';
 import 'package:itermremote_blocks/src/blocks/webrtc_block.dart';
+import 'package:itermremote_blocks/src/blocks/capture_source_block.dart';
 
 /// Orchestrates the daemon startup sequence and block wiring.
 class DaemonOrchestrator {
@@ -81,8 +82,12 @@ class DaemonOrchestrator {
     final capture = CaptureBlock(iterm2: bridge);
     registry.register(capture);
 
+
     final webrtc = WebRTCBlock();
     registry.register(webrtc);
+
+    final captureSource = CaptureSourceBlock();
+    registry.register(captureSource);
 
     final verify = VerifyBlock();
     verify.setDependencies(iterm2Bridge: bridge);
@@ -96,7 +101,7 @@ class DaemonOrchestrator {
     // ignore: avoid_print
     print('[orchestrator] blocks initialized');
 
-    final host = '0.0.0.0';
+    final host = '::';  // Listen on both IPv4 and IPv6
     final envPortStr = Platform.environment['ITERMREMOTE_WS_PORT'];
     final envPort = int.tryParse(envPortStr ?? '');
     final port = envPort ?? _wsPort ?? 8766;

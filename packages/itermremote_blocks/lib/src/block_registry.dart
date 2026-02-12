@@ -21,7 +21,8 @@ class BlockRegistry {
 
   /// Route a command to the appropriate block.
   Future<Ack> route(Command cmd) async {
-    final block = _blocks[cmd.target];
+    var block = _blocks[cmd.target] ?? _blocks[cmd.target.toLowerCase()];
+    print('[BlockRegistry] route: target=\${cmd.target}, available=\${_blocks.keys.toList()}, found=\${block != null}');
     if (block == null) {
       return Ack.fail(
         id: cmd.id,
@@ -50,4 +51,3 @@ class BlockRegistry {
     return out;
   }
 }
-

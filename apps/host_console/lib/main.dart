@@ -6,10 +6,15 @@ import 'ui/theme.dart';
 import 'logic/app_state.dart';
 import 'ui/pages/main_page.dart';
 import 'services/auth_service.dart';
+import 'services/daemon_manager.dart';
 import 'pages/login_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final daemonHealthy = await DaemonManager().ensureHealthy();
+  if (!daemonHealthy) {
+    print('[Main] CRITICAL: Daemon failed to become healthy. Starting in degraded mode.');
+  }
   await AuthService.instance.init();
 
   runApp(

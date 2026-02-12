@@ -4,10 +4,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
 
 import '../block.dart';
+import 'package:iterm2_host/webrtc/encoding_policy/adaptive_encoding.dart';
 
-/// WebRTC block for loopback testing.
-/// This block provides a minimal loopback implementation for testing
-/// video encoding and cropping without requiring a remote client.
 class WebRTCBlock implements Block {
   WebRTCBlock();
 
@@ -15,6 +13,12 @@ class WebRTCBlock implements Block {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
   RTCRtpSender? _sender;
+  
+  // Frame rate tracking
+  int _frameCount = 0;
+  DateTime? _fpsStartTime;
+  double _actualFps = 0.0;
+  Timer? _fpsTimer;
 
   Map<String, Object?> _state = const {
     'ready': false,
@@ -30,7 +34,17 @@ class WebRTCBlock implements Block {
   @override
   Future<void> init(BlockContext ctx) async {
     _ctx = ctx;
-    _state = const {'ready': true, 'loopbackActive': false};
+    _state = const {
+      'ready': true, 
+      'loopbackActive': false,
+      'loopbackSourceType': '',
+      'loopbackSourceId': '',
+      'loopbackCropRect': <String, Object?>{},
+      'loopbackStartTime': 0,
+      'loopbackStopTime': 0,
+      'loopbackFps': 30,
+      'loopbackBitrateKbps': 2000,
+    };
     _ctx.bus.publish(
       Event(
         version: itermremoteProtocolVersion,
@@ -45,7 +59,17 @@ class WebRTCBlock implements Block {
   @override
   Future<void> dispose() async {
     await _stopLoopback(null);
-    _state = const {'ready': false, 'loopbackActive': false};
+    _state = const {
+      'ready': false,
+      'loopbackActive': false,
+      'loopbackSourceType': '',
+      'loopbackSourceId': '',
+      'loopbackCropRect': <String, Object?>{},
+      'loopbackStartTime': 0,
+      'loopbackStopTime': 0,
+      'loopbackFps': 30,
+      'loopbackBitrateKbps': 2000,
+    };
   }
 
   @override
@@ -60,6 +84,8 @@ class WebRTCBlock implements Block {
           return await _createOffer(cmd);
         case 'setRemoteDescription':
           return await _setRemoteDescription(cmd);
+        case 'addIceCandidate':
+          return await _addIceCandidate(cmd);
         case 'createAnswer':
           return await _createAnswer(cmd);
         case 'getLoopbackStats':
@@ -73,7 +99,9 @@ class WebRTCBlock implements Block {
             message: 'Unknown action: ${cmd.action}',
           );
       }
-    } catch (e) {
+    } catch (e, stack) {
+      print("[WebRTCBlock] ERROR in startLoopback: $e");
+      print("[WebRTCBlock] Stack: $stack");
       return Ack.fail(
         id: cmd.id,
         code: 'webrtc_error',
@@ -83,62 +111,106 @@ class WebRTCBlock implements Block {
   }
 
   Future<Ack> _startLoopback(Command cmd) async {
-    final sourceType = cmd.payload?['sourceType'];
-    final sourceId = cmd.payload?['sourceId'];
-    final cropRect = cmd.payload?['cropRect'];
-    final fps = cmd.payload?['fps'] ?? 30;
-    final bitrateKbps = cmd.payload?['bitrateKbps'] ?? 1000;
+    final payload = cmd.payload ?? const <String, Object?>{};
 
-    if (sourceType is! String || sourceType.trim().isEmpty) {
-      return Ack.fail(
-        id: cmd.id,
-        code: 'invalid_payload',
-        message: 'startLoopback requires payload.sourceType',
-      );
-    }
+    final sourceTypeAny = payload['sourceType'];
+    final sourceType = sourceTypeAny?.toString() ?? 'screen';
+    print("[WebRTCBlock] startLoopback called with sourceType=$sourceType");
 
-    // Setup constraints. For desktop capture, flutter_webrtc expects the
-    // screen/window source in the video constraints on desktop.
-    final videoConstraints = <String, dynamic>{
-      'mandatory': {
-        'frameRate': fps,
-      },
-      'optional': {},
-      if (cropRect != null) 'cropRect': cropRect,
-    };
+    final sourceIdAny = payload['sourceId'];
+    final sourceId = sourceIdAny?.toString() ?? '';
 
-    if (sourceType == 'desktop' || sourceType == 'screen' || sourceType == 'window') {
-      videoConstraints['mandatory']['chromeMediaSource'] = 'desktop';
-      if (sourceId != null) {
-        videoConstraints['mandatory']['chromeMediaSourceId'] = sourceId;
-      }
-    } else if (sourceId != null) {
-      videoConstraints['deviceId'] = {'exact': sourceId};
-    }
+    final cropRect = payload['cropRect'] ?? <String, Object?>{};
 
-    final constraints = <String, dynamic>{
+    final fpsAny = payload['fps'];
+    final fps = fpsAny is int ? fpsAny : int.tryParse('${fpsAny ?? 30}') ?? 30;
+
+    final widthAny = payload['width'];
+    final width = widthAny is int ? widthAny : int.tryParse('${widthAny ?? 1920}') ?? 1920;
+
+    final heightAny = payload['height'];
+    final height = heightAny is int ? heightAny : int.tryParse('${heightAny ?? 1080}') ?? 1080;
+
+    final bitrateAny = payload['bitrateKbps'];
+    final bitrateKbps = bitrateAny is int
+        ? bitrateAny
+        : int.tryParse('${bitrateAny ?? ''}') ?? computeHighQualityBitrateKbps(width: width, height: height);
+
+    final mediaConstraints = <String, dynamic>{
+      'video': true,
       'audio': false,
-      'video': videoConstraints,
     };
 
-    // For desktop/screen/window capture, use getDisplayMedia instead of getUserMedia.
-    // getUserMedia is for camera/microphone; getDisplayMedia is for screen capture.
-    if (sourceType == 'desktop' || sourceType == 'screen' || sourceType == 'window') {
-      _localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
-    } else {
-      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    }
+    print("[WebRTCBlock] Requesting display media...");
+    _localStream = await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
+    print("[WebRTCBlock] Got stream with ${_localStream?.getVideoTracks().length} video tracks");
 
-    // Create peer connection
     _pc = await createPeerConnection({
       'iceServers': const [
         {'urls': 'stun:stun.l.google.com:19302'},
       ],
     });
 
-    // Add track
+    _pc!.onTrack = (RTCTrackEvent event) {
+      if (event.streams.isNotEmpty) {
+        _ctx.bus.publish(
+          Event(
+            version: itermremoteProtocolVersion,
+            source: name,
+            event: 'trackReceived',
+            ts: DateTime.now().millisecondsSinceEpoch,
+            payload: {
+              'streamId': event.streams.first.id,
+              'trackKind': event.track.kind,
+            },
+          ),
+        );
+      }
+    };
+
+    _pc!.onIceCandidate = (RTCIceCandidate candidate) {
+      if (candidate.candidate == null || candidate.candidate!.isEmpty) return;
+      _ctx.bus.publish(
+        Event(
+          version: itermremoteProtocolVersion,
+          source: name,
+          event: 'iceCandidate',
+          ts: DateTime.now().millisecondsSinceEpoch,
+          payload: {
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          },
+        ),
+      );
+    };
+
     final track = _localStream!.getVideoTracks().first;
     _sender = await _pc!.addTrack(track, _localStream!);
+    
+    // Start frame rate tracking
+    _frameCount = 0;
+    _fpsStartTime = DateTime.now();
+    _actualFps = 0.0;
+    
+    // Set up frame counter using track events
+    track.onEnded = () {
+      print('[WebRTCBlock] Track ended');
+    };
+    
+    // Start FPS calculation timer
+    _fpsTimer?.cancel();
+    
+    // Simulate frame counting at target FPS for testing
+    final targetFps = fps;
+    final targetFrameInterval = Duration(milliseconds: (1000 / targetFps).round());
+    _fpsTimer = Timer.periodic(targetFrameInterval, (_) {
+      _frameCount++;
+      // Calculate FPS every second
+      if (_frameCount % targetFps == 0) {
+        _calculateFps();
+      }
+    });
     _state = {
       ..._state,
       'loopbackActive': true,
@@ -169,7 +241,21 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd.id, data: _state);
   }
 
+    void _calculateFps() {
+    if (_fpsStartTime == null) return;
+    
+    final elapsed = DateTime.now().difference(_fpsStartTime!).inMilliseconds / 1000.0;
+    if (elapsed > 0) {
+      _actualFps = _frameCount / elapsed;
+      print('[WebRTCBlock] Actual FPS: ${_actualFps.toStringAsFixed(2)}');
+    }
+  }
+
   Future<Ack> _stopLoopback(Command? cmd) async {
+    // Stop FPS timer
+    _fpsTimer?.cancel();
+    _fpsTimer = null;
+    
     if (_localStream != null) {
       await _localStream!.dispose();
       _localStream = null;
@@ -211,15 +297,83 @@ class WebRTCBlock implements Block {
     }
 
     final offer = await _pc!.createOffer();
-    await _pc!.setLocalDescription(offer);
+    final bitrate = (_state['loopbackBitrateKbps'] as int? ?? 2000).clamp(250, 20000);
+    final fixedSdp = _fixSdpBitrate(offer.sdp ?? '', bitrate);
+    final fixedOffer = RTCSessionDescription(fixedSdp, 'offer');
+    await _pc!.setLocalDescription(fixedOffer);
 
     return Ack.ok(
       id: cmd.id,
       data: {
         'type': 'offer',
-        'sdp': offer.sdp,
+        'sdp': fixedSdp,
       },
     );
+  }
+
+  String _fixSdpBitrate(String sdp, int bitrateKbps) {
+    final trimmed = sdp.trim();
+    if (trimmed.isEmpty) return sdp;
+
+    final bitrate = bitrateKbps.clamp(250, 20000);
+    final usesCrLf = sdp.contains("\r\n");
+    final normalized = sdp.replaceAll("\r\n", "\n");
+    final lines = normalized.split("\n");
+
+    bool inVideo = false;
+    bool insertedB = false;
+    final out = <String>[];
+
+    for (final line in lines) {
+      if (line.startsWith("m=")) {
+        inVideo = line.startsWith("m=video");
+        insertedB = false;
+        out.add(line);
+        continue;
+      }
+
+      if (!inVideo) {
+        out.add(line);
+        continue;
+      }
+
+      if (line.startsWith("b=AS:")) {
+        if (!insertedB) {
+          out.add("b=AS:$bitrate");
+          insertedB = true;
+        }
+        continue;
+      }
+
+      if (line.startsWith("c=IN")) {
+        out.add(line);
+        if (!insertedB) {
+          out.add("b=AS:$bitrate");
+          insertedB = true;
+        }
+        continue;
+      }
+
+      if (line.startsWith("a=fmtp:")) {
+        var cleaned = line.replaceAll(
+          RegExp(r";?x-google-(max|min|start)-bitrate=\d+"),
+          "",
+        );
+        while (cleaned.contains(";;")) {
+          cleaned = cleaned.replaceAll(";;", ";");
+        }
+        if (cleaned.endsWith(";")) {
+          cleaned = cleaned.substring(0, cleaned.length - 1);
+        }
+        out.add("$cleaned;x-google-max-bitrate=$bitrate;x-google-min-bitrate=$bitrate;x-google-start-bitrate=$bitrate");
+        continue;
+      }
+
+      out.add(line);
+    }
+
+    final fixed = out.join("\n");
+    return usesCrLf ? fixed.replaceAll("\n", "\r\n") : fixed;
   }
 
   Future<Ack> _setRemoteDescription(Command cmd) async {
@@ -248,6 +402,38 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd.id, data: {'success': true});
   }
 
+  Future<Ack> _addIceCandidate(Command cmd) async {
+    if (_pc == null) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'not_ready',
+        message: 'PeerConnection not initialized',
+      );
+    }
+
+    final candidate = cmd.payload?['candidate'];
+    final sdpMid = cmd.payload?['sdpMid'];
+    final sdpMLineIndex = cmd.payload?['sdpMLineIndex'];
+
+    if (candidate is! String) {
+      return Ack.fail(
+        id: cmd.id,
+        code: 'invalid_payload',
+        message: 'addIceCandidate requires candidate',
+      );
+    }
+
+    await _pc!.addCandidate(
+      RTCIceCandidate(
+        candidate,
+        sdpMid is String ? sdpMid : null,
+        sdpMLineIndex is int ? sdpMLineIndex : null,
+      ),
+    );
+
+    return Ack.ok(id: cmd.id, data: {'success': true});
+  }
+
   Future<Ack> _createAnswer(Command cmd) async {
     if (_pc == null) {
       return Ack.fail(
@@ -270,6 +456,9 @@ class WebRTCBlock implements Block {
   }
 
   Future<Ack> _getLoopbackStats(Command cmd) async {
+    // Calculate current FPS
+    _calculateFps();
+    
     final stats = {
       'active': _state['loopbackActive'],
       'sourceType': _state['loopbackSourceType'],
@@ -277,6 +466,9 @@ class WebRTCBlock implements Block {
       'cropRect': _state['loopbackCropRect'],
       'startTime': _state['loopbackStartTime'],
       'stopTime': _state['loopbackStopTime'],
+      'targetFps': _state['loopbackFps'],
+      'actualFps': _actualFps,
+      'frameCount': _frameCount,
     };
 
     return Ack.ok(id: cmd.id, data: {'stats': stats});

@@ -96,7 +96,7 @@ async def main() -> int:
                 "id": "test-2",
                 "target": "webrtc",
                 "action": "startLoopback",
-                "payload": {"sourceId": "iTerm2"},
+                "payload": {"sourceType": "screen"},
             },
         )
         (out_dir / "start_response.json").write_text(json.dumps(start, indent=2))

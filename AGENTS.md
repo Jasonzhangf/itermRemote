@@ -126,6 +126,7 @@
 1. **从小开始构建**：每个模块先实现基础版本，通过功能测试后才能提交。
 2. **测试先行**：新增任何功能必须有完整单元测试；可做 E2E 的最终必须做一次端到端测试。
 3. **持续可用**：每次提交必须能构建、能通过测试、能通过 CI。
+4. **自测优先**：任何功能在让用户测试前，必须先本地完成回环/数据链路测试，且验证“数据通”而非仅信令通。
 4. **测试后人工确认**：每次跑完测试（单测/E2E/回环截图验证等）必须人工检查输出（日志/截图/视频/指标）是否符合预期；禁止只看“测试通过”就判定完成。
 5. **日志强制检查（硬性）**：所有 app 启动后必须检查日志。发现任何错误/异常/overflow（如 RenderFlex overflowed）必须立即修复，修复完成后才能继续后续任务。nn### 日志检查流程nn- **启动命令**：`bash scripts/run_host_console.sh`n- **检查日志**：`bash scripts/check_app_logs.sh`n- **硬性规则**：发现错误 → 必须修复 → 修复后重新检查 → 无错误才能继续nn### 手动检查nn```bashn# 启动并捕获日志ncd apps/host_console && flutter run -d macos --debug 2>&1 | tee /tmp/itermremote_console.lognn# 检查错误（另一个终端）nbash scripts/check_app_logs.sh /tmp/itermremote_console.logn```
 

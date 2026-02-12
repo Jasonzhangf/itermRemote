@@ -121,10 +121,30 @@ class ConnectionService {
   Future<void> connect({required String hostId, required String hostIp, int port = 8766}) async {
     if (_isConnected) await disconnect();
     try {
-      final uri = Uri.parse('ws://$hostIp:$port');
+      var resolvedHostIp = hostIp;
+      // Android emulator needs 10.0.2.2, real devices use actual IP (IPv6/IPv4)
+      if (Platform.isAndroid) {
+        // Check if running in emulator by checking for common emulator indicators
+        final isEmulator = hostIp.contains('127.0.0.1') || 
+                         hostIp.contains('localhost') ||
+                         hostIp == '10.0.2.2';
+        if (isEmulator) {
+          resolvedHostIp = '10.0.2.2';
+          print('[WS] Android emulator: using 10.0.2.2 for host');
+        } else {
+          // Real device: use the actual IP (IPv6 or IPv4)
+          resolvedHostIp = hostIp;
+          print('[WS] Android real device: using $resolvedHostIp:$port');
+        }
+      } else {
+        print('[WS] Connecting to $resolvedHostIp:$port (original: $hostIp)');
+      }
+      final uri = Uri.parse('ws://$resolvedHostIp:$port');
       _channel = WebSocketChannel.connect(uri);
       _connectionStateController.add(HostConnectionState.connecting);
       _channel!.stream.listen((message) => _onMessage(message), onDone: () => _onDisconnected(), onError: (error) => _onError(error));
+      // Subscribe to daemon events (ice candidates)
+      sendCmd('orchestrator', 'subscribe', {'sources': ['webrtc']});
       await _startWebRTC();
       _connectedHostId = hostId;
       _isConnected = true;
@@ -156,7 +176,15 @@ class ConnectionService {
     };
     
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      if (candidate.candidate == null || candidate.candidate!.isEmpty) {
+        return;
+      }
       print('[WebRTC] ICE candidate: ${candidate.candidate}');
+      sendCmd('webrtc', 'addIceCandidate', {
+        'candidate': candidate.candidate,
+        'sdpMid': candidate.sdpMid,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+      });
     };
     
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
@@ -182,6 +210,22 @@ class ConnectionService {
       await _peerConnection!.setLocalDescription(answer);
       print('[WebRTC] Sending answer to daemon');
       sendCmd('webrtc', 'setRemoteDescription', {'type': 'answer', 'sdp': answer.sdp});
+    }
+  }
+
+
+  Future<void> _handleRemoteCandidate(Map<String, dynamic> payload) async {
+    final candidate = payload['candidate'];
+    final sdpMid = payload['sdpMid'];
+    final sdpMLineIndex = payload['sdpMLineIndex'];
+    if (candidate == null || _peerConnection == null) return;
+    try {
+      await _peerConnection!.addCandidate(
+        RTCIceCandidate(candidate as String, sdpMid as String?, sdpMLineIndex as int?),
+      );
+      print('[WebRTC] Added remote ICE candidate');
+    } catch (e) {
+      print('[WebRTC] Failed to add remote candidate: $e');
     }
   }
 
@@ -213,6 +257,13 @@ class ConnectionService {
         final ackData = data['data'];
         if (ackData['type'] == 'offer' || ackData['sdp'] != null) {
           _handleSignaling(ackData);
+        }
+      } else if (data['type'] == 'evt') {
+        final source = data['source'];
+        final event = data['event'];
+        final payload = data['payload'];
+        if (source == 'webrtc' && event == 'iceCandidate' && payload is Map) {
+          _handleRemoteCandidate(payload.cast<String, dynamic>());
         }
       }
     } catch (e) {

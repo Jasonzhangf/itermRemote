@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
 import '../../logic/app_state.dart';
@@ -15,6 +16,7 @@ class StreamView extends StatefulWidget {
 
 class _StreamViewState extends State<StreamView> {
   final _videoRenderer = RTCVideoRenderer();
+  ImageProvider? _captureProvider;
 
   @override
   void initState() {
@@ -33,6 +35,10 @@ class _StreamViewState extends State<StreamView> {
     final state = context.watch<AppState>();
     final stream = state.remoteStream;
     final hasStream = stream != null;
+    final capturePath = state.capturePreviewPath;
+    if (capturePath != null) {
+      _captureProvider = FileImage(File(capturePath));
+    }
     
     if (hasStream) {
       _videoRenderer.srcObject = stream;
@@ -121,26 +127,67 @@ class _StreamViewState extends State<StreamView> {
           ),
           const SizedBox(height: 16),
 
-          // Main video surface
+          // Split view: Capture preview (left) + Encoded stream (right)
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: hasStream
-                    ? RTCVideoView(
-                        _videoRenderer,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
-                      )
-                    : _buildPlaceholder(state),
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildPreviewPanel(
+                    title: 'Capture Preview',
+                    child: _captureProvider != null
+                        ? Image(image: _captureProvider!, fit: BoxFit.contain)
+                        : _buildPlaceholder(state),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildPreviewPanel(
+                    title: 'Encoded Stream',
+                    child: hasStream
+                        ? RTCVideoView(
+                            _videoRenderer,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                          )
+                        : _buildPlaceholder(state),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPreviewPanel({required String title, required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          children: [
+            Positioned.fill(child: child),
+            Positioned(
+              left: 12,
+              top: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  title,
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

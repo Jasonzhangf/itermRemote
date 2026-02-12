@@ -237,14 +237,14 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 func generateTokens(userID, username, deviceID string, ipv6Capable bool) (string, string, error) {
 	now := time.Now()
 
-	// Access Token (15 分钟)
+	// Access Token (365 days)
 	accessClaims := Claims{
 		UserID:      userID,
 		Username:    username,
 		IPv6Capable: ipv6Capable,
 		DeviceID:    deviceID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(365 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        uuid.New().String(),
 		},
@@ -313,7 +313,7 @@ func saveSession(userID, deviceID, accessToken, refreshToken, ip, ipv6 string) {
 		RefreshTokenHash: hashToken(refreshToken),
 		IP:               ip,
 		IPv6:             ipv6,
-		ExpiresAt:        time.Now().Add(7 * 24 * time.Hour),
+		ExpiresAt:        time.Now().Add(365 * 24 * time.Hour), // match access token
 	}
 	db.Create(&session)
 }

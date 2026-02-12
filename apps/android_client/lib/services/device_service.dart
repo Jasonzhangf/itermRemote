@@ -9,7 +9,9 @@ class DeviceService {
 
   Future<void> reportDeviceStatus({required bool isOnline}) async {
     final token = AuthService.instance.accessToken;
-    if (token == null) return;
+    if (token == null) {
+      return;
+    }
 
     final info = await _getNetworkInfo();
     final deviceId = _getDeviceId();
@@ -24,7 +26,7 @@ class DeviceService {
       'is_online': isOnline,
     });
 
-    await http.post(
+    final resp = await http.post(
       Uri.parse('http://code.codewhisper.cc:8080/api/v1/device/status'),
       headers: {
         'Authorization': 'Bearer $token',
@@ -32,18 +34,37 @@ class DeviceService {
       },
       body: body,
     );
+
+    if (resp.statusCode == 401) {
+      await AuthService.instance.logout();
+      return;
+    }
+
+    if (resp.statusCode != 200) {
+      // do not throw to avoid crash from timer
+      print('[DeviceService] Status report failed: ${resp.statusCode}');
+    }
   }
 
   Future<List<DeviceInfo>> getDevices() async {
     final token = AuthService.instance.accessToken;
-    if (token == null) return [];
+    if (token == null) {
+      return [];
+    }
 
     final resp = await http.get(
       Uri.parse('http://code.codewhisper.cc:8080/api/v1/devices'),
       headers: {'Authorization': 'Bearer $token'},
     );
 
-    if (resp.statusCode != 200) return [];
+    if (resp.statusCode == 401) {
+      await AuthService.instance.logout();
+      return [];
+    }
+
+    if (resp.statusCode != 200) {
+      return [];
+    }
 
     final data = jsonDecode(resp.body);
     final list = data['devices'] as List? ?? [];

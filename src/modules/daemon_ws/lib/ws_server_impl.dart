@@ -38,10 +38,13 @@ class WsServer {
     );
 
     try {
-      _server = await shelf_io.serve(handler, host, port);
+      // Bind to IPv6 with shared=true for dual-stack (IPv4 + IPv6)
+      final server = await HttpServer.bind(InternetAddress.anyIPv6, port, shared: true);
+      shelf_io.serveRequests(server, handler);
+      _server = server;
       final actualPort = _server!.port;
       // ignore: avoid_print
-      print('[host_daemon] WS server listening on http://$host:$actualPort');
+      print('[host_daemon] WS server listening on IPv4+IPv6 port $actualPort');
       await _selfCheckTcp();
     } on SocketException catch (e) {
       // ignore: avoid_print
@@ -59,10 +62,12 @@ class WsServer {
         rethrow;
       }
 
-      _server = await shelf_io.serve(handler, host, port);
+      final server2 = await HttpServer.bind(InternetAddress.anyIPv6, port, shared: true);
+      shelf_io.serveRequests(server2, handler);
+      _server = server2;
       final actualPort = _server!.port;
       // ignore: avoid_print
-      print('[host_daemon] WS server listening on http://$host:$actualPort (after kill)');
+      print('[host_daemon] WS server listening on IPv4+IPv6 port $actualPort (after kill)');
       await _selfCheckTcp();
     }
 

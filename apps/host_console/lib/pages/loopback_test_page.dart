@@ -53,6 +53,7 @@ class _LoopbackTestPageState extends State<LoopbackTestPage> {
     });
 
     try {
+      // Use localhost for direct connection (or IPv6 if testing over network)
       final url = 'ws://127.0.0.1:8766';
       _wsClient = WsClient(url: url);
       await _wsClient!.connect();

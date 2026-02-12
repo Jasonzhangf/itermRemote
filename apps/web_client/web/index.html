@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>iTermRemote Web Client</title>
+  <style>
+    body { font-family: monospace; background: #222; color: #eee; padding: 20px; }
+    #video { width: 100%; background: #000; }
+    #log { height: 200px; overflow-y: scroll; background: #111; color: #0f0; padding: 8px; margin-top: 10px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    #status { margin: 10px 0; color: #ff6; }
+  </style>
+</head>
+<body>
+  <h1>iTermRemote Web Client (Loopback Test)</h1>
+  <div id="status">Status: idle</div>
+  <div>
+    <button id="connectBtn">Connect Loopback</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+  </div>
+  <video id="video" autoplay playsinline></video>
+  <div id="log"></div>
+  <script src="webrtc_client.js"></script>
+</body>
+</html>

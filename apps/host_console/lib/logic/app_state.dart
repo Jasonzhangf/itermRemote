@@ -4,6 +4,7 @@ import "package:flutter_webrtc/flutter_webrtc.dart";
 import "package:itermremote_protocol/itermremote_protocol.dart";
 import "../models/connection_model.dart";
 import "../services/ws_client.dart";
+import "../services/daemon_manager.dart";
 import "../services/device_service.dart";
 import "dart:async";
 
@@ -26,6 +27,8 @@ class AppState extends ChangeNotifier {
   // WebRTC
   RTCPeerConnection? _peerConnection;
   MediaStream? _remoteStream;
+  String? _capturePreviewPath;
+  MediaStream? _capturePreviewStream;
   bool _isStreaming = false;
   CaptureMode _captureMode = CaptureMode.screen;
   PanelInfo? _selectedPanel;
@@ -43,6 +46,8 @@ class AppState extends ChangeNotifier {
   PanelInfo? get selectedPanel => _selectedPanel;
   StreamStats? get streamStats => _streamStats;
   MediaStream? get remoteStream => _remoteStream;
+  String? get capturePreviewPath => _capturePreviewPath;
+  MediaStream? get capturePreviewStream => _capturePreviewStream;
   bool get isLoadingPanels => _isLoadingPanels;
   String? get errorMessage => _errorMessage;
 
@@ -102,6 +107,16 @@ class AppState extends ChangeNotifier {
     _updateConnectionStatus(ConnectionStatus.connecting, "connecting");
 
     try {
+      // Ensure daemon is healthy before attempting WS connection
+      final daemonHealthy = await DaemonManager().ensureHealthy();
+      if (!daemonHealthy) {
+        _lastStatus = "daemon not healthy";
+        _errorMessage = "daemon not healthy";
+        _updateConnectionStatus(ConnectionStatus.error, "daemon not healthy");
+        notifyListeners();
+        return;
+      }
+
       final ip = await _resolveLocalConnectIp();
       final url = "ws://$ip:${conn.port}";
       _wsClient = WsClient(url: url);
@@ -111,9 +126,7 @@ class AppState extends ChangeNotifier {
       _lastStatus = "connected";
       _updateConnectionStatus(ConnectionStatus.connected, "connected");
 
-      await _createPeerConnection();
       await _startStatusReporting();
-
       notifyListeners();
     } catch (e) {
       _isConnected = false;
@@ -151,24 +164,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     };
-
-    // Start loopback on daemon
-    await _sendCommand("webrtc", "startLoopback", {
-      "sourceType": "screen",
-      "fps": 30,
-      "bitrateKbps": 2000,
-    });
-
-    // Request offer
-    final offerAck = await _sendCommand("webrtc", "createOffer", {});
-    if (offerAck?.data != null) {
-      final data = offerAck!.data!;
-      final type = data['type'];
-      final sdp = data['sdp'];
-      if (type is String && sdp is String) {
-        await _handleSignaling({"type": type, "sdp": sdp});
-      }
-    }
   }
 
   Future<Ack?> _sendCommand(String target, String action, Map<String, dynamic> payload) async {
@@ -204,6 +199,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> loadCapturePreview() async {
+    if (_wsClient == null) return;
+    final evidenceDir = '/tmp/itermremote-preview';
+    final cropMetaAck = await _sendCommand('capture', 'activateAndComputeCrop', {
+      'sessionId': _selectedPanel?.id ?? '',
+    });
+    final meta = cropMetaAck?.data?['meta'];
+    if (meta == null) return;
+
+    final previewAck = await _sendCommand('verify', 'captureEvidence', {
+      'evidenceDir': evidenceDir,
+      'cropMeta': meta,
+      'sessionId': _selectedPanel?.id ?? '',
+    });
+    final evidencePath = previewAck?.data?['evidencePath'] as String?;
+    if (evidencePath == null) return;
+    _capturePreviewPath = evidencePath;
+    notifyListeners();
+  }
+
   void _updateConnectionStatus(ConnectionStatus status, String message) {
     final conn = activeConnection;
     if (conn == null) return;
@@ -221,11 +236,45 @@ class AppState extends ChangeNotifier {
 
   void setStreaming(bool streaming) {
     if (streaming && !_isStreaming) {
-      connect();
+      if (_capturePreviewPath == null) {
+        _errorMessage = "capture preview required before streaming";
+        notifyListeners();
+        return;
+      }
+      _startStreaming();
     } else if (!streaming && _isStreaming) {
       _isStreaming = false;
       _remoteStream = null;
       notifyListeners();
+    }
+  }
+
+  Future<void> _startStreaming() async {
+    if (_wsClient == null) {
+      await connect();
+    }
+    if (_wsClient == null) return;
+
+    if (_peerConnection == null) {
+      await _createPeerConnection();
+    }
+
+    // Start loopback on daemon (encoded stream) after preview success
+    await _sendCommand("webrtc", "startLoopback", {
+      "sourceType": "screen",
+      "fps": 30,
+      "bitrateKbps": 2000,
+    });
+
+    // Request offer
+    final offerAck = await _sendCommand("webrtc", "createOffer", {});
+    if (offerAck?.data != null) {
+      final data = offerAck!.data!;
+      final type = data['type'];
+      final sdp = data['sdp'];
+      if (type is String && sdp is String) {
+        await _handleSignaling({"type": type, "sdp": sdp});
+      }
     }
   }
 
@@ -234,6 +283,7 @@ class AppState extends ChangeNotifier {
     _selectedPanel = null;
     _isStreaming = false;
     _remoteStream = null;
+    _capturePreviewPath = null;
     notifyListeners();
   }
 
@@ -242,6 +292,7 @@ class AppState extends ChangeNotifier {
     _captureMode = CaptureMode.iterm2Panel;
     _isStreaming = false;
     _remoteStream = null;
+    _capturePreviewPath = null;
     notifyListeners();
   }
 
@@ -285,6 +336,7 @@ class AppState extends ChangeNotifier {
   Future<void> activatePanel(PanelInfo panel) async {
     if (_wsClient == null) return;
     await _sendCommand("iterm2", "activateSession", {"sessionId": panel.id});
+    await _refreshCapturePreview();
   }
 
   void clearError() {
@@ -296,6 +348,7 @@ class AppState extends ChangeNotifier {
     _peerConnection?.close();
     _peerConnection = null;
     _remoteStream = null;
+    _capturePreviewPath = null;
     _wsClient?.close();
     _wsClient = null;
     _isConnected = false;
@@ -321,6 +374,29 @@ class AppState extends ChangeNotifier {
       const Duration(seconds: 30),
       (_) => DeviceService.instance.reportDeviceStatus(isOnline: true),
     );
+  }
+
+  Future<void> _refreshCapturePreview() async {
+    if (_wsClient == null) return;
+    final evidenceDir = '/tmp/itermremote-preview';
+    final sessionId = _selectedPanel?.id;
+    if (sessionId == null || sessionId.isEmpty) return;
+
+    final activateAck = await _sendCommand('capture', 'activateAndComputeCrop', {
+      'sessionId': sessionId,
+    });
+    final meta = activateAck?.data?['meta'];
+    if (meta == null) return;
+
+    final captureAck = await _sendCommand('verify', 'captureEvidence', {
+      'evidenceDir': evidenceDir,
+      'sessionId': sessionId,
+      'cropMeta': meta,
+    });
+    final croppedPng = captureAck?.data?['croppedPng'] as String?;
+    if (croppedPng == null) return;
+    _capturePreviewPath = croppedPng;
+    notifyListeners();
   }
 
   void _stopStatusReporting() {

@@ -5,6 +5,9 @@ import "package:http/http.dart" as http;
 import "package:shared_preferences/shared_preferences.dart";
 
 import "remote_ws_service.dart";
+import "ws_client.dart";
+import "device_service.dart";
+import "daemon_manager.dart";
 
 class AuthService {
   AuthService._();
@@ -21,6 +24,7 @@ class AuthService {
   Map<String, dynamic>? _currentUser;
   DateTime? _tokenExpiry;
   Timer? _refreshTimer;
+  Timer? _statusTimer;
   bool _isWsConnecting = false;
   bool _isWsConnected = false;
 
@@ -62,6 +66,7 @@ class AuthService {
       }
       _authController.add(AuthState.authenticated);
       _startAutoRefresh();
+      _startStatusReporting();
       _connectToDaemon();
     } else {
       _authController.add(AuthState.unauthenticated);
@@ -72,31 +77,21 @@ class AuthService {
     if (_isWsConnecting || _isWsConnected) return;
     if (_accessToken == null) return;
 
+    // Health check before attempting WS connection
+    final daemonHealthy = await DaemonManager().ensureHealthy();
+    if (!daemonHealthy) {
+      print("[WS] Daemon not healthy, deferring connection");
+      _isWsConnecting = false;
+      Future.delayed(const Duration(seconds: 5), () => _connectToDaemon());
+      return;
+    }
+
     _isWsConnecting = true;
     _wsStateController.add(WsConnectionState.connecting);
 
     try {
-      final wsUrl = "ws://127.0.0.1:8766?token=$_accessToken";
-      final socket = await WebSocket.connect(wsUrl);
-
-      socket.listen(
-        (data) {
-          print("[WS] Received: $data");
-        },
-        onError: (error) {
-          print("[WS] Error: $error");
-          _isWsConnected = false;
-          _wsStateController.add(WsConnectionState.disconnected);
-          Future.delayed(const Duration(seconds: 5), () => _connectToDaemon());
-        },
-        onDone: () {
-          print("[WS] Disconnected");
-          _isWsConnected = false;
-          _wsStateController.add(WsConnectionState.disconnected);
-          Future.delayed(const Duration(seconds: 5), () => _connectToDaemon());
-        },
-        cancelOnError: false,
-      );
+      // Use WsClient for daemon control. Do not append token in URL.
+      await WsClient(url: 'ws://127.0.0.1:8766').connect();
 
       _isWsConnected = true;
       _isWsConnecting = false;
@@ -104,7 +99,6 @@ class AuthService {
 
       await _reportLocalStatus();
 
-      // Connect to remote WS relay for broadcast/forwarding
       await RemoteWsService.instance.connect();
 
     } catch (e) {
@@ -165,6 +159,7 @@ class AuthService {
         await _saveCredentials();
 
         _startAutoRefresh();
+        _startStatusReporting();
         _authController.add(AuthState.authenticated);
 
         _connectToDaemon();
@@ -247,6 +242,15 @@ class AuthService {
     });
   }
 
+  void _startStatusReporting() {
+    _statusTimer?.cancel();
+    DeviceService.instance.reportDeviceStatus(isOnline: true);
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => DeviceService.instance.reportDeviceStatus(isOnline: true),
+    );
+  }
+
   Future<bool> refreshAccessToken() async {
     if (_refreshToken == null) return false;
 
@@ -291,6 +295,8 @@ class AuthService {
     _tokenExpiry = null;
     _refreshTimer?.cancel();
     _refreshTimer = null;
+    _statusTimer?.cancel();
+    _statusTimer = null;
     _isWsConnected = false;
     _isWsConnecting = false;
 
@@ -308,6 +314,7 @@ class AuthService {
 
   void dispose() {
     _refreshTimer?.cancel();
+    _statusTimer?.cancel();
     _authController.close();
     _tokenExpiredController.close();
     _wsStateController.close();

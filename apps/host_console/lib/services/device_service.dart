@@ -7,12 +7,24 @@ class DeviceService {
   DeviceService._();
   static final instance = DeviceService._();
 
+  String getLocalDeviceId() {
+    return Platform.localHostname;
+  }
+
   Future<void> reportDeviceStatus({required bool isOnline}) async {
     final token = AuthService.instance.accessToken;
-    if (token == null) return;
+    if (token == null) {
+      print('[DeviceService] No token, skipping status report');
+      return;
+    }
 
     final info = await _getNetworkInfo();
-    final deviceId = _getDeviceId();
+    final deviceId = getLocalDeviceId();
+
+    print('[DeviceService] Reporting status for $deviceId');
+    print('[DeviceService] IPv4 LAN: ${info['ipv4_lan']}');
+    print('[DeviceService] IPv4 TS: ${info['ipv4_tailscale']}');
+    print('[DeviceService] IPv6: ${info['ipv6_public']}');
 
     final body = jsonEncode({
       'device_id': deviceId,
@@ -24,18 +36,55 @@ class DeviceService {
       'is_online': isOnline,
     });
 
-    await http.post(
-      Uri.parse('http://code.codewhisper.cc:8080/api/v1/device/status'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: body,
-    );
+    try {
+      final resp = await http.post(
+        Uri.parse('http://code.codewhisper.cc:8080/api/v1/device/status'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+      if (resp.statusCode == 200) {
+        print('[DeviceService] Status reported successfully');
+      } else {
+        print('[DeviceService] Failed to report status: ${resp.statusCode}');
+        print('[DeviceService] Response: ${resp.body}');
+      }
+    } catch (e) {
+      print('[DeviceService] Error reporting status: $e');
+    }
   }
 
-  String _getDeviceId() {
-    return Platform.localHostname;
+  Future<List<DeviceInfo>> getDevices() async {
+    final token = AuthService.instance.accessToken;
+    if (token == null) {
+      print('[DeviceService] No token, cannot get devices');
+      return [];
+    }
+
+    try {
+      final resp = await http.get(
+        Uri.parse('http://code.codewhisper.cc:8080/api/v1/devices'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final list = data['devices'] as List? ?? [];
+        print('[DeviceService] Got ${list.length} devices');
+        for (var d in list) {
+          print('[DeviceService] Device: ${d['device_id']} LAN:${d['ipv4_lan']} TS:${d['ipv4_tailscale']} IPv6:${d['ipv6_public']}');
+        }
+        return list.map((e) => DeviceInfo.fromJson(e)).toList();
+      } else {
+        print('[DeviceService] Failed to get devices: ${resp.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('[DeviceService] Error getting devices: $e');
+      return [];
+    }
   }
 
   Future<Map<String, List<String>>> _getNetworkInfo() async {
@@ -57,7 +106,10 @@ class DeviceService {
             ipv4Lan.add(address);
           }
         } else if (addr.type == InternetAddressType.IPv6) {
-          ipv6.add(address);
+          // Only filter out link-local fe80:, keep ULA (fc:/fd:) for Tailscale
+          if (!address.startsWith('fe80:')) {
+            ipv6.add(address);
+          }
         }
       }
     }
@@ -67,5 +119,37 @@ class DeviceService {
       'ipv4_tailscale': ipv4Ts,
       'ipv6_public': ipv6,
     };
+  }
+}
+
+class DeviceInfo {
+  final String deviceId;
+  final String deviceName;
+  final String deviceType;
+  final List<String> ipv4Lan;
+  final List<String> ipv4Tailscale;
+  final List<String> ipv6Public;
+  final bool isOnline;
+
+  DeviceInfo({
+    required this.deviceId,
+    required this.deviceName,
+    required this.deviceType,
+    required this.ipv4Lan,
+    required this.ipv4Tailscale,
+    required this.ipv6Public,
+    required this.isOnline,
+  });
+
+  factory DeviceInfo.fromJson(Map<String, dynamic> json) {
+    return DeviceInfo(
+      deviceId: json['device_id'] ?? '',
+      deviceName: json['device_name'] ?? '',
+      deviceType: json['device_type'] ?? '',
+      ipv4Lan: List<String>.from(json['ipv4_lan'] ?? []),
+      ipv4Tailscale: List<String>.from(json['ipv4_tailscale'] ?? []),
+      ipv6Public: List<String>.from(json['ipv6_public'] ?? []),
+      isOnline: json['is_online'] ?? false,
+    );
   }
 }

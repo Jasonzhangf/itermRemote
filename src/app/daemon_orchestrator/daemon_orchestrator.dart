@@ -99,12 +99,13 @@ class DaemonOrchestrator {
     // ignore: avoid_print
     print('[orchestrator] blocks initialized');
 
-    final host = '127.0.0.1';
+    final envHost = Platform.environment['ITERMREMOTE_WS_HOST'];
+    final host = envHost != null && envHost.trim().isNotEmpty ? envHost : '0.0.0.0';
     final envPortStr = Platform.environment['ITERMREMOTE_WS_PORT'];
     final envPort = int.tryParse(envPortStr ?? '');
     final port = envPort ?? _wsPort ?? 8766;
     // ignore: avoid_print
-    print('[orchestrator] ws port env=$envPortStr');
+    print('[orchestrator] ws host env=$envHost port env=$envPortStr');
 
     wsServer = WsServer(registry: registry, bus: bus, host: host, port: port);
 
