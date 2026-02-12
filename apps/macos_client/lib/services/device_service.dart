@@ -80,7 +80,7 @@ class DeviceService {
 
     final ipv4Lan = <String>[];
     final ipv4Ts = <String>[];
-    final ipv6 = <String>[];
+    final ipv6Public = <String>[];
 
     for (final interface in interfaces) {
       for (final addr in interface.addresses) {
@@ -94,7 +94,10 @@ class DeviceService {
             ipv4Lan.add(address);
           }
         } else if (addr.type == InternetAddressType.IPv6) {
-          ipv6.add(address);
+          final normalized = _normalizeIpv6(address);
+          if (_isPublicIpv6(normalized)) {
+            ipv6Public.add(normalized);
+          }
         }
       }
     }
@@ -102,8 +105,25 @@ class DeviceService {
     return {
       'ipv4_lan': ipv4Lan,
       'ipv4_tailscale': ipv4Ts,
-      'ipv6_public': ipv6,
+      'ipv6_public': ipv6Public,
     };
+  }
+
+  String _normalizeIpv6(String address) {
+    final idx = address.indexOf('%');
+    if (idx >= 0) {
+      return address.substring(0, idx).toLowerCase();
+    }
+    return address.toLowerCase();
+  }
+
+  bool _isPublicIpv6(String ip) {
+    if (ip.isEmpty || ip == '::' || ip == '::1') return false;
+    if (ip.startsWith('fe80:')) return false; // link-local
+    if (ip.startsWith('ff')) return false; // multicast
+    if (ip.startsWith('fc') || ip.startsWith('fd')) return false; // ULA/private
+    if (ip.startsWith('fec0:')) return false; // deprecated site-local
+    return true;
   }
 }
 
