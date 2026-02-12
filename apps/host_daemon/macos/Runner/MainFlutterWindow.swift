@@ -18,7 +18,9 @@ class MainFlutterWindow: NSWindow {
       self.ignoresMouseEvents = true
       self.level = .floating
       self.collectionBehavior = [.canJoinAllSpaces, .stationary]
+      self.isReleasedWhenClosed = false
       self.orderOut(nil)
+      NSApp.setActivationPolicy(.prohibited)
     }
 
     super.awakeFromNib()

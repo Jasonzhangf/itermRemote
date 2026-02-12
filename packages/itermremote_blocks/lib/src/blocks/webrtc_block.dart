@@ -315,17 +315,22 @@ class WebRTCBlock implements Block {
       );
     }
 
-    final offer = await _pc!.createOffer();
-    final bitrate = (_state['loopbackBitrateKbps'] as int? ?? 2000).clamp(250, 20000);
-    final fixedSdp = _fixSdpBitrate(offer.sdp ?? '', bitrate);
-    final fixedOffer = RTCSessionDescription(fixedSdp, 'offer');
-    await _pc!.setLocalDescription(fixedOffer);
+    final offer = await _pc!.createOffer(
+      {
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': true,
+      },
+    );
+    await _pc!.setLocalDescription(offer);
+    final local = await _pc!.getLocalDescription();
+    final sdp = local?.sdp ?? offer.sdp ?? '';
 
     return Ack.ok(
       id: cmd.id,
       data: {
         'type': 'offer',
-        'sdp': fixedSdp,
+        'sdp': sdp,
+        'sdpLength': sdp.length,
       },
     );
   }

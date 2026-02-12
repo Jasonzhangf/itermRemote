@@ -21,10 +21,16 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$REPO_ROOT/apps/host_daemon"
 RELEASE_APP="$APP_DIR/build/macos/Build/Products/Release/itermremote.app"
+RELEASE_BIN="$RELEASE_APP/Contents/MacOS/itermremote"
 DEBUG_APP="$APP_DIR/build/macos/Build/Products/Debug/itermremote.app"
 
 # Kill existing daemon
 bash "$REPO_ROOT/scripts/stop_host_daemon.sh" 2>/dev/null || true
+
+# Prevent legacy launchd jobs from auto-restarting /Applications copy during local debugging.
+launchctl bootout "gui/$(id -u)" com.itermremote.host-daemon >/dev/null 2>&1 || true
+launchctl bootout "gui/$(id -u)" itermremote.host-daemon >/dev/null 2>&1 || true
+launchctl remove com.itermremote.host-daemon >/dev/null 2>&1 || true
 
 rm -f "$LOG_FILE"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -53,12 +59,17 @@ else
     )
   fi
 
-  # Launch stable bundle path (prevents repeated macOS permission prompts caused by volatile debug runs)
-  open -gn "$RELEASE_APP"
+  # Launch exact built binary to avoid LaunchServices reusing /Applications copy.
+  nohup env \
+    ITERMREMOTE_WS_PORT="$PORT" \
+    ITERMREMOTE_REPO_ROOT="$REPO_ROOT" \
+    ITERMREMOTE_HEADLESS=1 \
+    NSQuitAlwaysKeepsWindows=0 \
+    "$RELEASE_BIN" >> "$LOG_FILE" 2>&1 &
 
   # Write PID file from real process
   sleep 1
-  REAL_PID=$(pgrep -f "itermremote.app/Contents/MacOS/itermremote" | head -1 || true)
+  REAL_PID=$(pgrep -f "$RELEASE_BIN" | head -1 || true)
   if [ -n "$REAL_PID" ]; then
     echo "$REAL_PID" > /tmp/itermremote_host.pid
   fi
@@ -82,7 +93,7 @@ fi
 
 # Refresh log snapshot for release mode via unified macOS log stream
 if [ "$MODE" = "release" ]; then
-  log show --style compact --last 2m --predicate 'process == "itermremote"' > "$LOG_FILE" 2>/dev/null || true
+  log show --style compact --last 2m --predicate 'process == "itermremote"' >> "$LOG_FILE" 2>/dev/null || true
 fi
 
 # Check logs for errors
@@ -93,7 +104,7 @@ else
 fi
 
 REAL_PID_FILE="/tmp/itermremote_host_real.pid"
-REAL_PID=$(pgrep -f "itermremote.app/Contents/MacOS/itermremote" | head -1 || true)
+REAL_PID=$(pgrep -f "$RELEASE_BIN" | head -1 || true)
 if [ -n "$REAL_PID" ]; then
   echo $REAL_PID > "$REAL_PID_FILE"
   echo "REAL_PID: $REAL_PID"
