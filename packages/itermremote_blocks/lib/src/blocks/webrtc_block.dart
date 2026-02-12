@@ -102,6 +102,7 @@ class WebRTCBlock implements Block {
     } catch (e, stack) {
       print("[WebRTCBlock] ERROR in startLoopback: $e");
       print("[WebRTCBlock] Stack: $stack");
+      print('[WebRTCBlock] DEBUG: cmd.payload=${cmd.payload}');
       return Ack.fail(
         id: cmd.id,
         code: 'webrtc_error',

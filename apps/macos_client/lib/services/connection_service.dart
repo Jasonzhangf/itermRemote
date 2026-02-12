@@ -218,12 +218,7 @@ class ConnectionService {
     if (capturePayload != null) {
       sendCmd('webrtc', 'startLoopback', capturePayload);
     } else {
-      final capturePayload = await _prepareIterm2Capture();
-    if (capturePayload != null) {
-      sendCmd('webrtc', 'startLoopback', capturePayload);
-    } else {
       sendCmd('webrtc', 'startLoopback', {'sourceType': 'screen', 'fps': 30, 'bitrateKbps': 2000});
-    }
     }
     await Future.delayed(Duration(milliseconds: 500));
     sendCmd('webrtc', 'createOffer', {});
