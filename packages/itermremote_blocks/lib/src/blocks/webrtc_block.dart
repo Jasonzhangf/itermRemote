@@ -364,29 +364,33 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd?.id ?? '', data: _state);
   }
 
-  Future<Ack> _createOffer(Command cmd) async {
-    if (_pc == null) {
-      return Ack.fail(
-        id: cmd.id,
-        code: 'not_ready',
-        message: 'PeerConnection not initialized',
-      );
-    }
+ Future<Ack> _createOffer(Command cmd) async {
+   if (_pc == null) {
+     return Ack.fail(
+       id: cmd.id,
+       code: 'not_ready',
+       message: 'PeerConnection not initialized',
+     );
+   }
 
-    final offer = await _pc!.createOffer(
-      {
-        'offerToReceiveAudio': false,
-        'offerToReceiveVideo': true,
-      },
-    );
-    await _pc!.setLocalDescription(offer);
-    final local = await _pc!.getLocalDescription();
-    var sdp = local?.sdp ?? offer.sdp ?? '';
+   final offer = await _pc!.createOffer(
+     {
+       'offerToReceiveAudio': false,
+       'offerToReceiveVideo': true,
+     },
+   );
     
     // Apply codec preference: prefer H.264 for compatibility with aiortc
+    var sdp = offer.sdp ?? '';
     sdp = _setPreferredCodec(sdp, video: 'h264');
     // Fix profile-level-id for better compatibility
     sdp = sdp.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+    // CRITICAL: Use packetization-mode=0 for aiortc compatibility (single NAL unit mode)
+    sdp = sdp.replaceAll('packetization-mode=1', 'packetization-mode=0');
+    
+    // Create modified offer and set as local description BEFORE sending
+    final modifiedOffer = RTCSessionDescription(sdp, 'offer');
+    await _pc!.setLocalDescription(modifiedOffer);
 
     return Ack.ok(
       id: cmd.id,
