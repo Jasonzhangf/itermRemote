@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'ip_reporter.dart';
 import 'package:flutter/material.dart';
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:daemon_ws/ws_server.dart';
@@ -33,6 +34,7 @@ class DaemonOrchestrator {
   late final InMemoryEventBus bus;
   late final BlockRegistry registry;
   late final WsServer wsServer;
+  IpReporter? _ipReporter;
 
   Future<void> initialize() async {
     if (!stateDir.existsSync()) {
@@ -115,6 +117,19 @@ class DaemonOrchestrator {
     await wsServer.start();
     // ignore: avoid_print
     print('[orchestrator] WS server started');
+
+    // Start IP reporter if token available
+    final token = Platform.environment['ITERMREMOTE_TOKEN'];
+    if (token != null && token.isNotEmpty) {
+      _ipReporter = IpReporter(
+        serverHost: 'code.codewhisper.cc',
+        serverPort: 8081,
+        token: token,
+      );
+      await _ipReporter!.start();
+      // ignore: avoid_print
+      print('[orchestrator] IP reporter started');
+    }
 
     _triggerLocalNetworkPrompt();
   }
