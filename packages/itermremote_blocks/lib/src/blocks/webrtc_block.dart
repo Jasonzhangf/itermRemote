@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
@@ -74,8 +75,12 @@ class WebRTCBlock implements Block {
 
  @override
  Future<Ack> handle(Command cmd) async {
+   stderr.writeln('[WebRTCBlock] handle START: action=${cmd.action} id=${cmd.id} target=${cmd.target}');
    try {
-     print('[WebRTCBlock] handle: action=${cmd.action} payload=${cmd.payload}');
+     stderr.writeln('[WebRTCBlock] handle try block entered');
+     final payload = cmd.payload;
+     stderr.writeln('[WebRTCBlock] payload type=${payload.runtimeType}');
+     stderr.writeln('[WebRTCBlock] payload=$payload');
      switch (cmd.action) {
        case 'startLoopback':
          return await _startLoopback(cmd);
@@ -101,9 +106,9 @@ class WebRTCBlock implements Block {
           );
       }
     } catch (e, stack) {
-      print("[WebRTCBlock] ERROR in startLoopback: $e");
-      print("[WebRTCBlock] Stack: $stack");
-      print('[WebRTCBlock] DEBUG: cmd.payload=${cmd.payload}');
+      stderr.writeln("[WebRTCBlock] ERROR in startLoopback: $e");
+      stderr.writeln("[WebRTCBlock] Stack: $stack");
+      stderr.writeln('[WebRTCBlock] DEBUG: cmd.payload=${cmd.payload}');
       return Ack.fail(
         id: cmd.id,
         code: 'webrtc_error',
