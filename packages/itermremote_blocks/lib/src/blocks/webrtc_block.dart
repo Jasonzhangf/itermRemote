@@ -380,7 +380,8 @@ class WebRTCBlock implements Block {
     );
     await _pc!.setLocalDescription(offer);
     final local = await _pc!.getLocalDescription();
-    final sdp = local?.sdp ?? offer.sdp ?? '';
+    final rawSdp = local?.sdp ?? offer.sdp ?? '';
+    final sdp = _tuneOfferForInterop(rawSdp);
 
     return Ack.ok(
       id: cmd.id,
@@ -390,6 +391,20 @@ class WebRTCBlock implements Block {
         'sdpLength': sdp.length,
       },
     );
+  }
+
+  /// Tune outbound SDP sent to remote peer for better H.264 interop.
+  /// IMPORTANT: this does not modify localDescription used by native WebRTC.
+  String _tuneOfferForInterop(String sdp) {
+    if (sdp.isEmpty) return sdp;
+
+    var out = sdp;
+
+    // aiortc + ffmpeg can be sensitive to fragmented H264 mode on some builds.
+    // Keep local SDP untouched; only hint remote with packetization-mode=0.
+    out = out.replaceAll('packetization-mode=1', 'packetization-mode=0');
+
+    return out;
   }
 
   String _fixSdpBitrate(String sdp, int bitrateKbps) {
