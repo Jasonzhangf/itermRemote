@@ -217,8 +217,28 @@ class WebRTCBlock implements Block {
       );
     };
 
-    final track = _localStream!.getVideoTracks().first;
-    _sender = await _pc!.addTrack(track, _localStream!);
+   final track = _localStream!.getVideoTracks().first;
+   _sender = await _pc!.addTrack(track, _localStream!);
+   
+    // Set codec preferences to H.264 Baseline 3.1 for aiortc compatibility
+    try {
+      final transceivers = await _pc!.getTransceivers();
+      for (final transceiver in transceivers) {
+        if (transceiver.sender.track?.kind == 'video') {
+          // Use H.264 Baseline for better aiortc compatibility
+          final h264Baseline = RTCRtpCodecCapability(
+            mimeType: 'video/H264',
+            clockRate: 90000,
+            sdpFmtpLine: 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f',
+          );
+          await transceiver.setCodecPreferences([h264Baseline]);
+          print('[WebRTCBlock] Set codec preferences to H.264 Baseline (42e01f)');
+          break;
+        }
+      }
+    } catch (e) {
+      print('[WebRTCBlock] WARNING: setCodecPreferences failed: $e');
+    }
     
     // Apply encoding parameters via sender.parameters for max framerate and bitrate
     try {
