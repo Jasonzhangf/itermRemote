@@ -72,12 +72,13 @@ class WebRTCBlock implements Block {
     };
   }
 
-  @override
-  Future<Ack> handle(Command cmd) async {
-    try {
-      switch (cmd.action) {
-        case 'startLoopback':
-          return await _startLoopback(cmd);
+ @override
+ Future<Ack> handle(Command cmd) async {
+   try {
+     print('[WebRTCBlock] handle: action=${cmd.action} payload=${cmd.payload}');
+     switch (cmd.action) {
+       case 'startLoopback':
+         return await _startLoopback(cmd);
         case 'stopLoopback':
           return await _stopLoopback(cmd);
         case 'createOffer':
@@ -132,10 +133,17 @@ class WebRTCBlock implements Block {
     final heightAny = payload['height'];
     final height = heightAny is int ? heightAny : int.tryParse('${heightAny ?? 1080}') ?? 1080;
 
-    final bitrateAny = payload['bitrateKbps'];
-    final bitrateKbps = bitrateAny is int
-        ? bitrateAny
-        : int.tryParse('${bitrateAny ?? ''}') ?? computeHighQualityBitrateKbps(width: width, height: height);
+   final bitrateAny = payload['bitrateKbps'];
+   final bitrateKbps = bitrateAny is int
+       ? bitrateAny
+       : (bitrateAny != null ? int.tryParse(bitrateAny.toString()) : null) ?? computeHighQualityBitrateKbps(width: width, height: height);
+    
+    // Debug logging
+    print('[WebRTCBlock] startLoopback params:');
+    print('  sourceType=$sourceType sourceId=$sourceId');
+    print('  fps=$fps size=${width}x$height');
+    print('  bitrateKbps=$bitrateKbps');
+    print('  cropRect=$cropRect');
 
     final mediaConstraints = <String, dynamic>{
       'video': true,

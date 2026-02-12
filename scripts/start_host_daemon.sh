@@ -45,7 +45,8 @@ if [ "$MODE" = "debug" ]; then
   WRAPPER_PID=$!
   echo $WRAPPER_PID > /tmp/itermremote_host.pid
 else
-  if [ $REBUILD -eq 1 ] || [ ! -d "$RELEASE_APP" ]; then
+  # Rebuild by default when sources changed to ensure latest runtime code is loaded.
+  if [ $REBUILD -eq 1 ] || [ ! -d "$RELEASE_APP" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain apps/host_daemon packages/itermremote_blocks packages/iterm2_host src/modules/daemon_ws 2>/dev/null)" ]; then
     (
       cd "$APP_DIR"
       flutter build macos --release 2>&1 | tee "$LOG_FILE"
