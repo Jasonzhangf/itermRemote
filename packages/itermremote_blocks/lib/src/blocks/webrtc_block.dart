@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
-import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
 
 import '../block.dart';
 import 'package:iterm2_host/webrtc/encoding_policy/adaptive_encoding.dart';
@@ -15,6 +14,10 @@ class WebRTCBlock implements Block {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
   RTCRtpSender? _sender;
+  
+  // ICE candidate buffering (cloudplayplus_stone approach)
+  final List<RTCIceCandidate> _pendingCandidates = [];
+  bool _remoteDescriptionSet = false;
   
   // Frame rate tracking
   int _frameCount = 0;
@@ -76,12 +79,9 @@ class WebRTCBlock implements Block {
 
  @override
  Future<Ack> handle(Command cmd) async {
-   stderr.writeln('[WebRTCBlock] handle START: action=${cmd.action} id=${cmd.id} target=${cmd.target}');
+   stderr.writeln('[WebRTCBlock] handle START: action=\${cmd.action} id=\${cmd.id} target=\${cmd.target}');
    try {
-     stderr.writeln('[WebRTCBlock] handle try block entered');
      final payload = cmd.payload;
-     stderr.writeln('[WebRTCBlock] payload type=${payload.runtimeType}');
-     stderr.writeln('[WebRTCBlock] payload=$payload');
      switch (cmd.action) {
        case 'startLoopback':
          return await _startLoopback(cmd);
@@ -103,20 +103,18 @@ class WebRTCBlock implements Block {
           return Ack.fail(
             id: cmd.id,
             code: 'unknown_action',
-            message: 'Unknown action: ${cmd.action}',
+            message: 'Unknown action: \${cmd.action}',
           );
       }
     } catch (e, stack) {
-      stderr.writeln("[WebRTCBlock] ERROR in startLoopback: $e");
-      stderr.writeln("[WebRTCBlock] Stack: $stack");
-      stderr.writeln('[WebRTCBlock] DEBUG: cmd.payload=${cmd.payload}');
+      stderr.writeln("[WebRTCBlock] ERROR: \$e");
+      stderr.writeln("[WebRTCBlock] Stack: \$stack");
       return Ack.fail(
         id: cmd.id,
         code: 'webrtc_error',
         message: e.toString(),
         details: {
           'action': cmd.action,
-          'payload': cmd.payload,
           'stack': stack.toString(),
         },
       );
@@ -128,7 +126,7 @@ class WebRTCBlock implements Block {
 
     final sourceTypeAny = payload['sourceType'];
     final sourceType = sourceTypeAny?.toString() ?? 'screen';
-    print("[WebRTCBlock] startLoopback called with sourceType=$sourceType");
+    print("[WebRTCBlock] startLoopback called with sourceType=\$sourceType");
 
     final sourceIdAny = payload['sourceId'];
     final sourceId = sourceIdAny?.toString() ?? '';
@@ -136,25 +134,24 @@ class WebRTCBlock implements Block {
     final cropRect = payload['cropRect'] ?? <String, Object?>{};
 
     final fpsAny = payload['fps'];
-    final fps = fpsAny is int ? fpsAny : int.tryParse('${fpsAny ?? 30}') ?? 30;
+    final fps = fpsAny is int ? fpsAny : int.tryParse('\${fpsAny ?? 30}') ?? 30;
 
     final widthAny = payload['width'];
-    final width = widthAny is int ? widthAny : int.tryParse('${widthAny ?? 1920}') ?? 1920;
+    final width = widthAny is int ? widthAny : int.tryParse('\${widthAny ?? 1920}') ?? 1920;
 
     final heightAny = payload['height'];
-    final height = heightAny is int ? heightAny : int.tryParse('${heightAny ?? 1080}') ?? 1080;
+    final height = heightAny is int ? heightAny : int.tryParse('\${heightAny ?? 1080}') ?? 1080;
 
    final bitrateAny = payload['bitrateKbps'];
    final bitrateKbps = bitrateAny is int
        ? bitrateAny
        : (bitrateAny != null ? int.tryParse(bitrateAny.toString()) : null) ?? computeHighQualityBitrateKbps(width: width, height: height);
     
-    // Debug logging
     print('[WebRTCBlock] startLoopback params:');
-    print('  sourceType=$sourceType sourceId=$sourceId');
-    print('  fps=$fps size=${width}x$height');
-    print('  bitrateKbps=$bitrateKbps');
-    print('  cropRect=$cropRect');
+    print('  sourceType=\$sourceType sourceId=\$sourceId');
+    print('  fps=\$fps size=\${width}x\$height');
+    print('  bitrateKbps=\$bitrateKbps');
+    print('  cropRect=\$cropRect');
 
     // Request display media with proper constraints for high frame rate
     final mediaConstraints = <String, dynamic>{
@@ -174,14 +171,16 @@ class WebRTCBlock implements Block {
       },
     };
 
-    print("[WebRTCBlock] Requesting display media with constraints: $mediaConstraints");
+    print("[WebRTCBlock] Requesting display media with constraints: \$mediaConstraints");
     _localStream = await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
-    print("[WebRTCBlock] Got stream with ${_localStream?.getVideoTracks().length} video tracks");
+    print("[WebRTCBlock] Got stream with \${_localStream?.getVideoTracks().length} video tracks");
 
+    // CRITICAL: Use unified-plan (cloudplayplus_stone approach)
     _pc = await createPeerConnection({
       'iceServers': const [
         {'urls': 'stun:stun.l.google.com:19302'},
       ],
+      'sdpSemantics': 'unified-plan',
     });
 
     _pc!.onTrack = (RTCTrackEvent event) {
@@ -203,49 +202,34 @@ class WebRTCBlock implements Block {
 
     _pc!.onIceCandidate = (RTCIceCandidate candidate) {
       if (candidate.candidate == null || candidate.candidate!.isEmpty) return;
-      _ctx.bus.publish(
-        Event(
-          version: itermremoteProtocolVersion,
-          source: name,
-          event: 'iceCandidate',
-          ts: DateTime.now().millisecondsSinceEpoch,
-          payload: {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          },
-        ),
-      );
+      
+      // cloudplayplus_stone: buffer candidates until remote description is set
+      if (!_remoteDescriptionSet) {
+        _pendingCandidates.add(candidate);
+        print('[WebRTCBlock] Buffered ICE candidate (waiting for remote desc)');
+      } else {
+        _ctx.bus.publish(
+          Event(
+            version: itermremoteProtocolVersion,
+            source: name,
+            event: 'iceCandidate',
+            ts: DateTime.now().millisecondsSinceEpoch,
+            payload: {
+              'candidate': candidate.candidate,
+              'sdpMid': candidate.sdpMid,
+              'sdpMLineIndex': candidate.sdpMLineIndex,
+            },
+          ),
+        );
+      }
     };
 
    final track = _localStream!.getVideoTracks().first;
    _sender = await _pc!.addTrack(track, _localStream!);
    
-    // Set codec preferences to H.264 Baseline 3.1 for aiortc compatibility
-    try {
-      final transceivers = await _pc!.getTransceivers();
-      for (final transceiver in transceivers) {
-        if (transceiver.sender.track?.kind == 'video') {
-          // Use H.264 Baseline for better aiortc compatibility
-          final h264Baseline = RTCRtpCodecCapability(
-            mimeType: 'video/H264',
-            clockRate: 90000,
-            sdpFmtpLine: 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f',
-          );
-          await transceiver.setCodecPreferences([h264Baseline]);
-          print('[WebRTCBlock] Set codec preferences to H.264 Baseline (42e01f)');
-          break;
-        }
-      }
-    } catch (e) {
-      print('[WebRTCBlock] WARNING: setCodecPreferences failed: $e');
-    }
-    
     // Apply encoding parameters via sender.parameters for max framerate and bitrate
     try {
       final params = _sender!.parameters;
-      print('[WebRTCBlock] Current sender encodings: ${params.encodings}');
-
       if (params.encodings != null && params.encodings!.isNotEmpty) {
         for (final encoding in params.encodings!) {
           encoding.maxBitrate = bitrateKbps * 1000;
@@ -263,11 +247,9 @@ class WebRTCBlock implements Block {
           ),
         ];
       }
-
-      final success = await _sender!.setParameters(params);
-      print('[WebRTCBlock] setParameters result: $success');
+      await _sender!.setParameters(params);
     } catch (e) {
-      print('[WebRTCBlock] WARNING: setParameters failed: $e');
+      print('[WebRTCBlock] WARNING: setParameters failed: \$e');
     }
     
     // Start frame rate tracking
@@ -325,7 +307,7 @@ class WebRTCBlock implements Block {
     final elapsed = DateTime.now().difference(_fpsStartTime!).inMilliseconds / 1000.0;
     if (elapsed > 0) {
       _actualFps = _frameCount / elapsed;
-      print('[WebRTCBlock] Actual FPS: ${_actualFps.toStringAsFixed(2)}');
+      print('[WebRTCBlock] Actual FPS: \${_actualFps.toStringAsFixed(2)}');
     }
   }
 
@@ -342,6 +324,8 @@ class WebRTCBlock implements Block {
       _pc = null;
     }
     _sender = null;
+    _pendingCandidates.clear();
+    _remoteDescriptionSet = false;
 
     _state = {
       ..._state,
@@ -373,111 +357,42 @@ Future<Ack> _createOffer(Command cmd) async {
     );
   }
 
-  final offer = await _pc!.createOffer(
-    {
-      'offerToReceiveAudio': false,
-      'offerToReceiveVideo': true,
+  // CRITICAL: Follow cloudplayplus_stone exactly
+  // 1. Create offer with OfferToReceiveVideo=true
+  RTCSessionDescription sdp = await _pc!.createOffer({
+    'mandatory': {
+      'OfferToReceiveAudio': false,
+      'OfferToReceiveVideo': true,
     },
-  );
+    'optional': [],
+  });
 
-   // Follow cloudplayplus_stone approach: setLocalDescription first, then modify SDP for remote
-   await _pc!.setLocalDescription(offer);
-   
-   // Get the SDP and modify for remote peer (don't change local state)
-   final local = await _pc!.getLocalDescription();
-   var sdp = local?.sdp ?? offer.sdp ?? '';
-   
-   // Apply cloudplayplus_stone-like codec preference first
-   sdp = _setPreferredCodec(sdp, video: 'h264');
-   // Then compatibility tweaks
-   sdp = sdp.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
-   sdp = sdp.replaceAll('packetization-mode=1', 'packetization-mode=0');
+  // 2. Apply _fixSdp (cloudplayplus_stone approach)
+  final fixedSdpStr = _fixSdp(sdp.sdp ?? '');
+  sdp.sdp = fixedSdpStr;
 
+  // 3. setLocalDescription with THE SAME fixed SDP
+  await _pc!.setLocalDescription(sdp);
 
   return Ack.ok(
     id: cmd.id,
     data: {
       'type': 'offer',
-      'sdp': sdp,
-      'sdpLength': sdp.length,
+      'sdp': sdp.sdp,
+      'sdpLength': sdp.sdp?.length ?? 0,
     },
   );
 }
 
-  /// Set preferred codec in SDP by filtering codec list.
-  /// Based on cloudplayplus_stone implementation.
-  String _setPreferredCodec(String sdp, {String video = 'h264'}) {
-    try {
-      final session = sdp_transform.parse(sdp);
-      final mediaList = session['media'] as List<dynamic>?;
-      if (mediaList == null) return sdp;
-      
-      final videoMline = mediaList.firstWhere(
-        (m) => m['type'] == 'video',
-        orElse: () => null,
-      );
-      if (videoMline == null) return sdp;
-      
-      final rtp = videoMline['rtp'] as List<dynamic>?;
-      final fmtp = videoMline['fmtp'] as List<dynamic>?;
-      final rtcpFb = videoMline['rtcpFb'] as List<dynamic>?;
-      final payloads = (videoMline['payloads'] as String?)?.split(' ') ?? [];
-      
-      if (rtp == null) return sdp;
-      
-      // Filter to only H.264 codecs
-      final want = video.toLowerCase();
-      final matches = rtp.where((e) {
-        final codec = (e['codec'] as String?)?.toLowerCase() ?? '';
-        return codec.contains(want);
-      }).toList();
-      
-      if (matches.isEmpty) {
-        print('[WebRTCBlock] No $video codec found, keeping original SDP');
-        return sdp;
-      }
-      
-      // Build new payloads list from matches
-      final newPayloads = <String>[];
-      final newRtp = <dynamic>[];
-      final newFmtp = <dynamic>[];
-      final newRtcpFb = <dynamic>[];
-      
-      for (final match in matches) {
-        final payload = match['payload'];
-        if (payload == null) continue;
-        final payloadStr = payload.toString();
-        if (payloads.contains(payloadStr)) {
-          newPayloads.add(payloadStr);
-          newRtp.add(match);
-          
-          // Include related fmtp
-          if (fmtp != null) {
-            newFmtp.addAll(fmtp.where((f) => f['payload'].toString() == payloadStr));
-          }
-          // Include related rtcpFb
-          if (rtcpFb != null) {
-            newRtcpFb.addAll(rtcpFb.where((r) => r['payload'].toString() == payloadStr));
-          }
-        }
-      }
-      
-      if (newPayloads.isEmpty) return sdp;
-      
-      // Update mline
-      videoMline['payloads'] = newPayloads.join(' ');
-      videoMline['rtp'] = newRtp;
-      videoMline['fmtp'] = newFmtp;
-      videoMline['rtcpFb'] = newRtcpFb;
-      
-      final result = sdp_transform.write(session, null);
-      print('[WebRTCBlock] SDP filtered to $video codec, payloads: $newPayloads');
-      return result;
-    } catch (e) {
-      print('[WebRTCBlock] Failed to set preferred codec: $e');
-      return sdp;
-    }
-  }
+/// Fix SDP: cloudplayplus_stone approach
+/// - Replace profile-level-id=640c1f with 42e032 (H.264 baseline)
+/// - NO codec filtering, NO packetization-mode change
+String _fixSdp(String sdp) {
+  var s = sdp;
+  // cloudplayplus_stone: only profile-level-id replacement
+  s = s.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+  return s;
+}
 
   Future<Ack> _setRemoteDescription(Command cmd) async {
     if (_pc == null) {
@@ -501,6 +416,25 @@ Future<Ack> _createOffer(Command cmd) async {
 
     final description = RTCSessionDescription(sdp, type);
     await _pc!.setRemoteDescription(description);
+    
+    // cloudplayplus_stone: after setRemoteDescription, flush buffered candidates
+    _remoteDescriptionSet = true;
+    while (_pendingCandidates.isNotEmpty) {
+      final candidate = _pendingCandidates.removeAt(0);
+      _ctx.bus.publish(
+        Event(
+          version: itermremoteProtocolVersion,
+          source: name,
+          event: 'iceCandidate',
+          ts: DateTime.now().millisecondsSinceEpoch,
+          payload: {
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          },
+        ),
+      );
+    }
 
     return Ack.ok(id: cmd.id, data: {'success': true});
   }
@@ -547,6 +481,11 @@ Future<Ack> _createOffer(Command cmd) async {
     }
 
     final answer = await _pc!.createAnswer();
+    
+    // Apply _fixSdp to answer (cloudplayplus_stone approach)
+    final fixedSdp = _fixSdp(answer.sdp ?? '');
+    answer.sdp = fixedSdp;
+    
     await _pc!.setLocalDescription(answer);
 
     return Ack.ok(

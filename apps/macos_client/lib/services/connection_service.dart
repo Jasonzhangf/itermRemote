@@ -24,6 +24,9 @@ class ConnectionService {
   String? _preferredSessionId;
 
   final Map<String, Completer<Map<String, dynamic>>> _pendingAcks = {};
+  
+  // ICE candidate buffering (cloudplayplus_stone approach)
+  final List<RTCIceCandidate> _pendingCandidates = [];
 
   final _connectionStateController = StreamController<HostConnectionState>.broadcast();
   final _streamController = StreamController<MediaStream?>.broadcast();
@@ -137,9 +140,7 @@ class ConnectionService {
     if (_isConnected) await disconnect();
     try {
       var resolvedHostIp = hostIp;
-      // Android emulator needs 10.0.2.2, real devices use actual IP (IPv6/IPv4)
       if (Platform.isAndroid) {
-        // Check if running in emulator by checking for common emulator indicators
         final isEmulator = hostIp.contains('127.0.0.1') || 
                          hostIp.contains('localhost') ||
                          hostIp == '10.0.2.2';
@@ -147,7 +148,6 @@ class ConnectionService {
           resolvedHostIp = '10.0.2.2';
           print('[WS] Android emulator: using 10.0.2.2 for host');
         } else {
-          // Real device: use the actual IP (IPv6 or IPv4)
           resolvedHostIp = hostIp;
           print('[WS] Android real device: using $resolvedHostIp:$port');
         }
@@ -156,7 +156,6 @@ class ConnectionService {
       }
       final uri;
       if (resolvedHostIp.contains(':')) {
-        // IPv6 needs brackets
         uri = Uri.parse('ws://[$resolvedHostIp]:$port');
       } else {
         uri = Uri.parse('ws://$resolvedHostIp:$port');
@@ -164,7 +163,6 @@ class ConnectionService {
       _channel = WebSocketChannel.connect(uri);
       _connectionStateController.add(HostConnectionState.connecting);
       _channel!.stream.listen((message) => _onMessage(message), onDone: () => _onDisconnected(), onError: (error) => _onError(error));
-      // Subscribe to daemon events (ice candidates)
       sendCmd('orchestrator', 'subscribe', {'sources': ['webrtc']});
       await _startWebRTC();
       _connectedHostId = hostId;
@@ -182,6 +180,7 @@ class ConnectionService {
     final iceServers = await fetchICEServers();
     final pcConfig = <String, dynamic>{
       'iceServers': iceServers.map((s) => s.toJson()).toList(),
+      'sdpSemantics': 'unified-plan',  // cloudplayplus_stone uses unified-plan
     };
     print('[WebRTC] Using ICE servers: ${jsonEncode(pcConfig['ice_servers'])}');
     
@@ -201,12 +200,9 @@ class ConnectionService {
       if (candidate.candidate == null || candidate.candidate!.isEmpty) {
         return;
       }
-      print('[WebRTC] ICE candidate: ${candidate.candidate}');
-      sendCmd('webrtc', 'addIceCandidate', {
-        'candidate': candidate.candidate,
-        'sdpMid': candidate.sdpMid,
-        'sdpMLineIndex': candidate.sdpMLineIndex,
-      });
+      // cloudplayplus_stone: buffer candidates until remote description is set
+      _pendingCandidates.add(candidate);
+      print('[WebRTC] Buffered local ICE candidate');
     };
     
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
@@ -262,7 +258,6 @@ class ConnectionService {
             if (decoded is num) framesDecoded = decoded;
             if (received is num) {
               framesReceived = received;
-              // Update hasStream based on actual frame reception
               if (received > 0 && !_hasStream) {
                 _hasStream = true;
                 _notifyStateChange();
@@ -296,15 +291,46 @@ class ConnectionService {
     if (type == 'offer' && sdp != null) {
       print('[WebRTC] Setting remote description (offer)');
       await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      
+      // cloudplayplus_stone: after setRemoteDescription, flush buffered candidates
+      print('[WebRTC] Flushing ${_pendingCandidates.length} buffered local candidates');
+      while (_pendingCandidates.isNotEmpty) {
+        final candidate = _pendingCandidates.removeAt(0);
+        sendCmd('webrtc', 'addIceCandidate', {
+          'candidate': candidate.candidate,
+          'sdpMid': candidate.sdpMid,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+        });
+      }
+      
       print('[WebRTC] Creating answer');
-      final answer = await _peerConnection!.createAnswer();
+      // cloudplayplus_stone: OfferToReceiveVideo=false in answer
+      final answer = await _peerConnection!.createAnswer({
+        'mandatory': {
+          'OfferToReceiveAudio': false,
+          'OfferToReceiveVideo': false,
+        },
+        'optional': [],
+      });
+      
+      // cloudplayplus_stone: apply _fixSdp to answer
+      final fixedSdp = _fixSdp(answer.sdp ?? '');
+      answer.sdp = fixedSdp;
+      print('[WebRTC] Fixed answer SDP (profile-level-id)');
+      
       print('[WebRTC] Setting local description (answer)');
       await _peerConnection!.setLocalDescription(answer);
       print('[WebRTC] Sending answer to daemon');
       sendCmd('webrtc', 'setRemoteDescription', {'type': 'answer', 'sdp': answer.sdp});
     }
   }
-
+  
+  /// Fix SDP: cloudplayplus_stone approach
+  String _fixSdp(String sdp) {
+    var s = sdp;
+    s = s.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+    return s;
+  }
 
   Future<void> _handleRemoteCandidate(Map<String, dynamic> payload) async {
     final candidate = payload['candidate'];
@@ -320,7 +346,6 @@ class ConnectionService {
       print('[WebRTC] Failed to add remote candidate: $e');
     }
   }
-
 
   Future<Map<String, dynamic>> _sendCommandAwait(String target, String action, Map<String, dynamic>? payload, {Duration timeout = const Duration(seconds: 5)}) async {
     final id = 'cmd-${DateTime.now().millisecondsSinceEpoch}-$target-$action';
@@ -338,7 +363,6 @@ class ConnectionService {
   }
 
   Map<String, dynamic>? _buildIterm2CropRect(Map<String, dynamic> meta) {
-    // Use layoutFrame (panel relative to layout) and layoutWindowFrame (full layout size)
     final f = (meta['layoutFrame'] as Map?) ?? const {};
     final wf = (meta['layoutWindowFrame'] as Map?) ?? const {};
     final fx = (f['x'] as num?)?.toDouble() ?? 0.0;
