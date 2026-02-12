@@ -108,6 +108,11 @@ class WebRTCBlock implements Block {
         id: cmd.id,
         code: 'webrtc_error',
         message: e.toString(),
+        details: {
+          'action': cmd.action,
+          'payload': cmd.payload,
+          'stack': stack.toString(),
+        },
       );
     }
   }
