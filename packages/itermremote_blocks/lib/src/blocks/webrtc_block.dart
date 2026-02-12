@@ -155,12 +155,25 @@ class WebRTCBlock implements Block {
     print('  bitrateKbps=$bitrateKbps');
     print('  cropRect=$cropRect');
 
+    // Request display media with proper constraints for high frame rate
     final mediaConstraints = <String, dynamic>{
-      'video': true,
       'audio': false,
+      'video': {
+        'mandatory': {
+          'minWidth': width,
+          'minHeight': height,
+          'maxWidth': width,
+          'maxHeight': height,
+          'minFrameRate': fps,
+          'maxFrameRate': fps,
+        },
+        'optional': [
+          {'googCpuOveruseDetection': true},
+        ],
+      },
     };
 
-    print("[WebRTCBlock] Requesting display media...");
+    print("[WebRTCBlock] Requesting display media with constraints: $mediaConstraints");
     _localStream = await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
     print("[WebRTCBlock] Got stream with ${_localStream?.getVideoTracks().length} video tracks");
 
@@ -207,29 +220,54 @@ class WebRTCBlock implements Block {
     final track = _localStream!.getVideoTracks().first;
     _sender = await _pc!.addTrack(track, _localStream!);
     
+    // Apply encoding parameters via sender.parameters for max framerate and bitrate
+    try {
+      final params = _sender!.parameters;
+      print('[WebRTCBlock] Current sender encodings: ${params.encodings}');
+
+      if (params.encodings != null && params.encodings!.isNotEmpty) {
+        for (final encoding in params.encodings!) {
+          encoding.maxBitrate = bitrateKbps * 1000;
+          encoding.maxFramerate = fps;
+          encoding.active = true;
+          encoding.scaleResolutionDownBy = 1.0;
+        }
+      } else {
+        params.encodings = <RTCRtpEncoding>[
+          RTCRtpEncoding(
+            active: true,
+            maxBitrate: bitrateKbps * 1000,
+            maxFramerate: fps,
+            scaleResolutionDownBy: 1.0,
+          ),
+        ];
+      }
+
+      final success = await _sender!.setParameters(params);
+      print('[WebRTCBlock] setParameters result: $success');
+    } catch (e) {
+      print('[WebRTCBlock] WARNING: setParameters failed: $e');
+    }
+    
     // Start frame rate tracking
     _frameCount = 0;
     _fpsStartTime = DateTime.now();
     _actualFps = 0.0;
     
-    // Set up frame counter using track events
     track.onEnded = () {
       print('[WebRTCBlock] Track ended');
     };
     
-    // Start FPS calculation timer
     _fpsTimer?.cancel();
-    
-    // Simulate frame counting at target FPS for testing
     final targetFps = fps;
     final targetFrameInterval = Duration(milliseconds: (1000 / targetFps).round());
     _fpsTimer = Timer.periodic(targetFrameInterval, (_) {
       _frameCount++;
-      // Calculate FPS every second
       if (_frameCount % targetFps == 0) {
         _calculateFps();
       }
     });
+    
     _state = {
       ..._state,
       'loopbackActive': true,
@@ -260,7 +298,7 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd.id, data: _state);
   }
 
-    void _calculateFps() {
+  void _calculateFps() {
     if (_fpsStartTime == null) return;
     
     final elapsed = DateTime.now().difference(_fpsStartTime!).inMilliseconds / 1000.0;
@@ -271,7 +309,6 @@ class WebRTCBlock implements Block {
   }
 
   Future<Ack> _stopLoopback(Command? cmd) async {
-    // Stop FPS timer
     _fpsTimer?.cancel();
     _fpsTimer = null;
     
@@ -480,7 +517,6 @@ class WebRTCBlock implements Block {
   }
 
   Future<Ack> _getLoopbackStats(Command cmd) async {
-    // Calculate current FPS
     _calculateFps();
     
     final stats = {
