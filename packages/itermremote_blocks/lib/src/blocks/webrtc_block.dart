@@ -364,43 +364,45 @@ class WebRTCBlock implements Block {
     return Ack.ok(id: cmd?.id ?? '', data: _state);
   }
 
- Future<Ack> _createOffer(Command cmd) async {
-   if (_pc == null) {
-     return Ack.fail(
-       id: cmd.id,
-       code: 'not_ready',
-       message: 'PeerConnection not initialized',
-     );
-   }
-
-   final offer = await _pc!.createOffer(
-     {
-       'offerToReceiveAudio': false,
-       'offerToReceiveVideo': true,
-     },
-   );
-    
-    // Apply codec preference: prefer H.264 for compatibility with aiortc
-    var sdp = offer.sdp ?? '';
-    sdp = _setPreferredCodec(sdp, video: 'h264');
-    // Fix profile-level-id for better compatibility
-    sdp = sdp.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
-    // CRITICAL: Use packetization-mode=0 for aiortc compatibility (single NAL unit mode)
-    sdp = sdp.replaceAll('packetization-mode=1', 'packetization-mode=0');
-    
-    // Create modified offer and set as local description BEFORE sending
-    final modifiedOffer = RTCSessionDescription(sdp, 'offer');
-    await _pc!.setLocalDescription(modifiedOffer);
-
-    return Ack.ok(
+Future<Ack> _createOffer(Command cmd) async {
+  if (_pc == null) {
+    return Ack.fail(
       id: cmd.id,
-      data: {
-        'type': 'offer',
-        'sdp': sdp,
-        'sdpLength': sdp.length,
-      },
+      code: 'not_ready',
+      message: 'PeerConnection not initialized',
     );
   }
+
+  final offer = await _pc!.createOffer(
+    {
+      'offerToReceiveAudio': false,
+      'offerToReceiveVideo': true,
+    },
+  );
+
+   // Follow cloudplayplus_stone approach: setLocalDescription first, then modify SDP for remote
+   await _pc!.setLocalDescription(offer);
+   
+   // Get the SDP and modify for remote peer (don't change local state)
+   final local = await _pc!.getLocalDescription();
+   var sdp = local?.sdp ?? offer.sdp ?? '';
+   
+   // Apply cloudplayplus_stone-like codec preference first
+   sdp = _setPreferredCodec(sdp, video: 'h264');
+   // Then compatibility tweaks
+   sdp = sdp.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+   sdp = sdp.replaceAll('packetization-mode=1', 'packetization-mode=0');
+
+
+  return Ack.ok(
+    id: cmd.id,
+    data: {
+      'type': 'offer',
+      'sdp': sdp,
+      'sdpLength': sdp.length,
+    },
+  );
+}
 
   /// Set preferred codec in SDP by filtering codec list.
   /// Based on cloudplayplus_stone implementation.
