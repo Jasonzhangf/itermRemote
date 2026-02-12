@@ -13,6 +13,7 @@ dependencies:
     path: ../iterm2_host
   image: ^4.7.2
   flutter_webrtc: ^0.9.48
+  sdp_transform: ^0.3.2
 
 dev_dependencies:
   lints: ^3.0.0

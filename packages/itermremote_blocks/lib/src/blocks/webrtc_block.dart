@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:itermremote_protocol/itermremote_protocol.dart';
+import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
 
 import '../block.dart';
 import 'package:iterm2_host/webrtc/encoding_policy/adaptive_encoding.dart';
@@ -380,8 +381,12 @@ class WebRTCBlock implements Block {
     );
     await _pc!.setLocalDescription(offer);
     final local = await _pc!.getLocalDescription();
-    final rawSdp = local?.sdp ?? offer.sdp ?? '';
-    final sdp = _tuneOfferForInterop(rawSdp);
+    var sdp = local?.sdp ?? offer.sdp ?? '';
+    
+    // Apply codec preference: prefer H.264 for compatibility with aiortc
+    sdp = _setPreferredCodec(sdp, video: 'h264');
+    // Fix profile-level-id for better compatibility
+    sdp = sdp.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
 
     return Ack.ok(
       id: cmd.id,
@@ -393,83 +398,79 @@ class WebRTCBlock implements Block {
     );
   }
 
-  /// Tune outbound SDP sent to remote peer for better H.264 interop.
-  /// IMPORTANT: this does not modify localDescription used by native WebRTC.
-  String _tuneOfferForInterop(String sdp) {
-    if (sdp.isEmpty) return sdp;
-
-    var out = sdp;
-
-    // aiortc + ffmpeg can be sensitive to fragmented H264 mode on some builds.
-    // Keep local SDP untouched; only hint remote with packetization-mode=0.
-    out = out.replaceAll('packetization-mode=1', 'packetization-mode=0');
-
-    return out;
-  }
-
-  String _fixSdpBitrate(String sdp, int bitrateKbps) {
-    final trimmed = sdp.trim();
-    if (trimmed.isEmpty) return sdp;
-
-    final bitrate = bitrateKbps.clamp(250, 20000);
-    final usesCrLf = sdp.contains("\r\n");
-    final normalized = sdp.replaceAll("\r\n", "\n");
-    final lines = normalized.split("\n");
-
-    bool inVideo = false;
-    bool insertedB = false;
-    final out = <String>[];
-
-    for (final line in lines) {
-      if (line.startsWith("m=")) {
-        inVideo = line.startsWith("m=video");
-        insertedB = false;
-        out.add(line);
-        continue;
+  /// Set preferred codec in SDP by filtering codec list.
+  /// Based on cloudplayplus_stone implementation.
+  String _setPreferredCodec(String sdp, {String video = 'h264'}) {
+    try {
+      final session = sdp_transform.parse(sdp);
+      final mediaList = session['media'] as List<dynamic>?;
+      if (mediaList == null) return sdp;
+      
+      final videoMline = mediaList.firstWhere(
+        (m) => m['type'] == 'video',
+        orElse: () => null,
+      );
+      if (videoMline == null) return sdp;
+      
+      final rtp = videoMline['rtp'] as List<dynamic>?;
+      final fmtp = videoMline['fmtp'] as List<dynamic>?;
+      final rtcpFb = videoMline['rtcpFb'] as List<dynamic>?;
+      final payloads = (videoMline['payloads'] as String?)?.split(' ') ?? [];
+      
+      if (rtp == null) return sdp;
+      
+      // Filter to only H.264 codecs
+      final want = video.toLowerCase();
+      final matches = rtp.where((e) {
+        final codec = (e['codec'] as String?)?.toLowerCase() ?? '';
+        return codec.contains(want);
+      }).toList();
+      
+      if (matches.isEmpty) {
+        print('[WebRTCBlock] No $video codec found, keeping original SDP');
+        return sdp;
       }
-
-      if (!inVideo) {
-        out.add(line);
-        continue;
-      }
-
-      if (line.startsWith("b=AS:")) {
-        if (!insertedB) {
-          out.add("b=AS:$bitrate");
-          insertedB = true;
+      
+      // Build new payloads list from matches
+      final newPayloads = <String>[];
+      final newRtp = <dynamic>[];
+      final newFmtp = <dynamic>[];
+      final newRtcpFb = <dynamic>[];
+      
+      for (final match in matches) {
+        final payload = match['payload'];
+        if (payload == null) continue;
+        final payloadStr = payload.toString();
+        if (payloads.contains(payloadStr)) {
+          newPayloads.add(payloadStr);
+          newRtp.add(match);
+          
+          // Include related fmtp
+          if (fmtp != null) {
+            newFmtp.addAll(fmtp.where((f) => f['payload'].toString() == payloadStr));
+          }
+          // Include related rtcpFb
+          if (rtcpFb != null) {
+            newRtcpFb.addAll(rtcpFb.where((r) => r['payload'].toString() == payloadStr));
+          }
         }
-        continue;
       }
-
-      if (line.startsWith("c=IN")) {
-        out.add(line);
-        if (!insertedB) {
-          out.add("b=AS:$bitrate");
-          insertedB = true;
-        }
-        continue;
-      }
-
-      if (line.startsWith("a=fmtp:")) {
-        var cleaned = line.replaceAll(
-          RegExp(r";?x-google-(max|min|start)-bitrate=\d+"),
-          "",
-        );
-        while (cleaned.contains(";;")) {
-          cleaned = cleaned.replaceAll(";;", ";");
-        }
-        if (cleaned.endsWith(";")) {
-          cleaned = cleaned.substring(0, cleaned.length - 1);
-        }
-        out.add("$cleaned;x-google-max-bitrate=$bitrate;x-google-min-bitrate=$bitrate;x-google-start-bitrate=$bitrate");
-        continue;
-      }
-
-      out.add(line);
+      
+      if (newPayloads.isEmpty) return sdp;
+      
+      // Update mline
+      videoMline['payloads'] = newPayloads.join(' ');
+      videoMline['rtp'] = newRtp;
+      videoMline['fmtp'] = newFmtp;
+      videoMline['rtcpFb'] = newRtcpFb;
+      
+      final result = sdp_transform.write(session, null);
+      print('[WebRTCBlock] SDP filtered to $video codec, payloads: $newPayloads');
+      return result;
+    } catch (e) {
+      print('[WebRTCBlock] Failed to set preferred codec: $e');
+      return sdp;
     }
-
-    final fixed = out.join("\n");
-    return usesCrLf ? fixed.replaceAll("\n", "\r\n") : fixed;
   }
 
   Future<Ack> _setRemoteDescription(Command cmd) async {

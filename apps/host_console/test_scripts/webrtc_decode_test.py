@@ -22,7 +22,6 @@ import os
 import time
 from pathlib import Path
 
-
 async def run() -> int:
     try:
         import websockets  # type: ignore
@@ -96,17 +95,18 @@ async def run() -> int:
             if track.kind != "video":
                 return
             print("[decode] video track received")
-            while frame_count < 5:
+            while frame_count < 30:
                 try:
                     frame = await track.recv()
                 except MediaStreamError:
                     break
                 if isinstance(frame, VideoFrame):
                     frame_count += 1
-                    if frame_count == 1:
+                    # Save first frame and log every 10 frames
+                    if frame_count == 1 or frame_count % 10 == 0:
                         img = frame.to_image()
                         img.save(first_frame_path)
-                        print(f"[decode] saved first frame to {first_frame_path}")
+                        print(f"[decode] saved frame {frame_count} to {first_frame_path}")
 
         @pc.on("icecandidate")
         async def on_ice(candidate):
@@ -128,8 +128,8 @@ async def run() -> int:
         })
         print(f"[decode] setRemoteDescription success={answer_ack.get('success')}")
 
-        deadline = time.time() + 10
-        while time.time() < deadline and frame_count < 3:
+        deadline = time.time() + 15
+        while time.time() < deadline and frame_count < 30:
             await asyncio.sleep(0.2)
 
         print(f"[decode] frames_received={frame_count}")
@@ -143,7 +143,6 @@ async def run() -> int:
         await pc.close()
 
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(asyncio.run(run()))
