@@ -105,25 +105,7 @@ class IpReporter {
         }
       }
     } catch (e) {
-      // 降级到其他服务
-      try {
-        final socket = await Socket.connect(
-//          useIpv6 ? 'ifconfig.co' : 'ifconfig.co',
-//          80,
-//          timeout: Duration(seconds: 5),
-//        );
-//        socket.write('GET / HTTP/1.1\r\nHost: ifconfig.co\r\n\r\n');
-//        await socket.flush();
-//        final response = await socket.transform(utf8.decoder).join();
-//        socket.destroy();
-//        
-//        // 简单提取 IP
-//        final ipRegex = useIpv6 
-//            ? RegExp(r'([0-9a-fA-F:]{2,39})')
-//            : RegExp(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})');
-//        final match = ipRegex.firstMatch(response);
-//        return match?.group(1);
-      } catch (_) {}
+      print('[IpReporter] Failed to fetch IP: $e');
     }
     return null;
   }
