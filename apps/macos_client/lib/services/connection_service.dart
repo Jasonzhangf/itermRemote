@@ -4,12 +4,16 @@ import 'dart:io';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
+import 'remote_ws_service.dart';
 
 class ConnectionService {
   ConnectionService._();
   static final instance = ConnectionService._();
 
   WebSocketChannel? _channel;
+  StreamSubscription<Map<String, dynamic>>? _relaySub;
+  bool _relayMode = false;
+  String? _relayTargetDeviceId;
   String? _connectedHostId;
   bool _isConnected = false;
   RTCPeerConnection? _peerConnection;
@@ -174,6 +178,29 @@ class ConnectionService {
     }
   }
 
+  Future<void> connectViaRelay({required String hostDeviceId}) async {
+    if (_isConnected) {
+      await disconnect();
+    }
+
+    _relayMode = true;
+    _relayTargetDeviceId = hostDeviceId;
+    _connectionStateController.add(HostConnectionState.connecting);
+
+    if (!RemoteWsService.instance.isConnected) {
+      await RemoteWsService.instance.connect();
+    }
+
+    _relaySub?.cancel();
+    _relaySub = RemoteWsService.instance.messageStream.listen(_onRelayMessage);
+
+    await _startWebRTC();
+    _connectedHostId = hostDeviceId;
+    _isConnected = true;
+    _connectionStateController.add(HostConnectionState.connected);
+    print('[Relay] Connected in relay mode, target=$hostDeviceId');
+  }
+
   Future<void> _startWebRTC() async {
     print('[WebRTC] Creating peer connection');
     
@@ -200,15 +227,55 @@ class ConnectionService {
       if (candidate.candidate == null || candidate.candidate!.isEmpty) {
         return;
       }
-      // cloudplayplus_stone: buffer candidates until remote description is set
-      _pendingCandidates.add(candidate);
-      print('[WebRTC] Buffered local ICE candidate');
+
+      if (_relayMode && _relayTargetDeviceId != null) {
+        RemoteWsService.instance.sendProxy(
+          channel: 'webrtc-candidate',
+          target: _relayTargetDeviceId!,
+          payload: {
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          },
+        );
+        print('[Relay] Sent local ICE candidate via relay');
+      } else {
+        // cloudplayplus_stone: buffer candidates until remote description is set
+        _pendingCandidates.add(candidate);
+        print('[WebRTC] Buffered local ICE candidate');
+      }
     };
     
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
       print('[WebRTC] Connection state: $state');
     };
     
+    if (_relayMode) {
+      final offer = await _peerConnection!.createOffer({
+        'mandatory': {
+          'OfferToReceiveAudio': false,
+          'OfferToReceiveVideo': true,
+        },
+        'optional': [],
+      });
+      final fixedSdp = _fixSdp(offer.sdp ?? '');
+      offer.sdp = fixedSdp;
+      await _peerConnection!.setLocalDescription(offer);
+
+      if (_relayTargetDeviceId != null) {
+        RemoteWsService.instance.sendProxy(
+          channel: 'webrtc-offer',
+          target: _relayTargetDeviceId!,
+          payload: {
+            'type': 'offer',
+            'sdp': offer.sdp,
+          },
+        );
+        print('[Relay] Sent offer via relay');
+      }
+      return;
+    }
+
     final capturePayload = await _prepareIterm2Capture();
     print('[Capture] iterm2 payload: $capturePayload');
     if (capturePayload != null) {
@@ -219,6 +286,49 @@ class ConnectionService {
     await Future.delayed(Duration(milliseconds: 500));
     sendCmd('webrtc', 'createOffer', {});
     print('[WebRTC] Requested offer from daemon');
+  }
+
+  Future<void> _onRelayMessage(Map<String, dynamic> msg) async {
+    if (msg['type'] != 'proxy') return;
+    final channel = msg['channel'] as String?;
+    final payload = msg['payload'];
+    if (payload is! Map || _peerConnection == null) return;
+    final p = payload.cast<String, dynamic>();
+
+    if (channel == 'webrtc-answer') {
+      final sdp = p['sdp'] as String?;
+      if (sdp != null) {
+        await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
+        print('[Relay] Applied remote answer');
+      }
+    } else if (channel == 'webrtc-offer') {
+      final sdp = p['sdp'] as String?;
+      if (sdp != null) {
+        await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+        final answer = await _peerConnection!.createAnswer({
+          'mandatory': {
+            'OfferToReceiveAudio': false,
+            'OfferToReceiveVideo': false,
+          },
+          'optional': [],
+        });
+        answer.sdp = _fixSdp(answer.sdp ?? '');
+        await _peerConnection!.setLocalDescription(answer);
+        if (_relayTargetDeviceId != null) {
+          RemoteWsService.instance.sendProxy(
+            channel: 'webrtc-answer',
+            target: _relayTargetDeviceId!,
+            payload: {
+              'type': 'answer',
+              'sdp': answer.sdp,
+            },
+          );
+        }
+        print('[Relay] Replied with answer');
+      }
+    } else if (channel == 'webrtc-candidate') {
+      await _handleRemoteCandidate(p);
+    }
   }
 
   void _notifyStateChange() {
@@ -446,6 +556,10 @@ class ConnectionService {
     _streamController.add(null);
     await _channel?.sink.close();
     _channel = null;
+    await _relaySub?.cancel();
+    _relaySub = null;
+    _relayMode = false;
+    _relayTargetDeviceId = null;
     _connectedHostId = null;
     _isConnected = false;
     _connectionStateController.add(HostConnectionState.disconnected);
