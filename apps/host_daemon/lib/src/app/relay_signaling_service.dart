@@ -18,6 +18,7 @@ class RelaySignalingService {
   final Duration reconnectInterval;
 
   WebSocket? _socket;
+  StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
   bool _disposed = false;
   String? _deviceId;
@@ -38,6 +39,8 @@ class RelaySignalingService {
     _disposed = true;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    await _socketSub?.cancel();
+    _socketSub = null;
     await _socket?.close();
     _socket = null;
   }
@@ -51,7 +54,7 @@ class RelaySignalingService {
       _socket = await WebSocket.connect(wsUrl);
       print('[RelaySignaling] Connected');
       
-      _socket!.listen(
+      _socketSub = _socket!.listen(
         _handleMessage,
         onError: _handleError,
         onDone: _handleDone,
@@ -102,6 +105,7 @@ class RelaySignalingService {
   void _handleDone() {
     print('[RelaySignaling] Disconnected');
     _socket = null;
+    _socketSub = null;
     onDisconnected?.call();
     _scheduleReconnect();
   }
@@ -130,8 +134,8 @@ class RelaySignalingService {
   }
 
   void _sendProxy(String channel, Map<String, dynamic> payload, String target) {
-    if (_socket == null) {
-      print('[RelaySignaling] Not connected, dropping message');
+    if (_disposed || _socket == null) {
+      print('[RelaySignaling] Not connected or disposed, dropping message');
       return;
     }
 
@@ -147,5 +151,5 @@ class RelaySignalingService {
     print('[RelaySignaling] Sent $channel to $target');
   }
 
-  bool get isConnected => _socket != null;
+  bool get isConnected => _socket != null && !_disposed;
 }

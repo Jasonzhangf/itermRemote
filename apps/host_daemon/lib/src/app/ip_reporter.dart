@@ -17,11 +17,14 @@ class IpReporter {
   final Duration interval;
 
   WebSocket? _socket;
+  StreamSubscription<dynamic>? _socketSub;
   Timer? _reportTimer;
   String? _lastIpv4;
   String? _lastIpv6;
+  bool _disposed = false;
 
   Future<void> start() async {
+    _disposed = false;
     await _connect();
     _reportTimer = Timer.periodic(interval, (_) => _report());
     // 立即上报一次
@@ -29,21 +32,24 @@ class IpReporter {
   }
 
   Future<void> stop() async {
+    _disposed = true;
     _reportTimer?.cancel();
     _reportTimer = null;
+    await _socketSub?.cancel();
+    _socketSub = null;
     await _socket?.close();
     _socket = null;
   }
 
   Future<void> _connect() async {
-    if (_socket != null) return;
+    if (_disposed || _socket != null) return;
     
     final wsUrl = 'ws://$serverHost:$serverPort/ws/connect?token=$token';
     try {
       _socket = await WebSocket.connect(wsUrl);
       print('[IpReporter] Connected to $wsUrl');
       
-      _socket!.listen(
+      _socketSub = _socket!.listen(
         (data) => _handleMessage(data),
         onError: (e) => _handleError(e),
         onDone: () => _handleDone(),
@@ -51,12 +57,16 @@ class IpReporter {
     } catch (e) {
       print('[IpReporter] Connection failed: $e');
       // 5 秒后重连
-      await Future.delayed(Duration(seconds: 5));
-      await _connect();
+      if (!_disposed) {
+        await Future.delayed(const Duration(seconds: 5));
+        _connect();
+      }
     }
   }
 
   Future<void> _report() async {
+    if (_disposed) return;
+    
     // 获取公网 IP
     final ipv4 = await _fetchPublicIp(useIpv6: false);
     final ipv6 = await _fetchPublicIp(useIpv6: true);
@@ -85,9 +95,10 @@ class IpReporter {
   }
 
   Future<String?> _fetchPublicIp({required bool useIpv6}) async {
+    if (_disposed) return null;
     try {
       final client = HttpClient();
-      client.connectionTimeout = Duration(seconds: 5);
+      client.connectionTimeout = const Duration(seconds: 5);
       
       final url = useIpv6 
           ? Uri.parse('https://[2606:4700:4700::1111]/cdn-cgi/trace')
@@ -117,12 +128,16 @@ class IpReporter {
   void _handleError(Object error) {
     print('[IpReporter] Error: $error');
     _socket = null;
-    Future.delayed(Duration(seconds: 5), () => _connect());
+    if (!_disposed) {
+      Future.delayed(const Duration(seconds: 5), () => _connect());
+    }
   }
 
   void _handleDone() {
     print('[IpReporter] Disconnected');
     _socket = null;
-    Future.delayed(Duration(seconds: 5), () => _connect());
+    if (!_disposed) {
+      Future.delayed(const Duration(seconds: 5), () => _connect());
+    }
   }
 }
