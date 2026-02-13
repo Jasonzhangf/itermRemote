@@ -107,7 +107,7 @@ class WebRTCBlock implements Block {
           );
       }
     } catch (e, stack) {
-      stderr.writeln("[WebRTCBlock] ERROR: \$e");
+      stderr.writeln("[WebRTCBlock] ERROR: \${e.runtimeType}: \$e");
       stderr.writeln("[WebRTCBlock] Stack: \$stack");
       return Ack.fail(
         id: cmd.id,
@@ -115,6 +115,7 @@ class WebRTCBlock implements Block {
         message: e.toString(),
         details: {
           'action': cmd.action,
+          'errorType': e.runtimeType.toString(),
           'stack': stack.toString(),
         },
       );
@@ -386,11 +387,41 @@ Future<Ack> _createOffer(Command cmd) async {
 
 /// Fix SDP: cloudplayplus_stone approach
 /// - Replace profile-level-id=640c1f with 42e032 (H.264 baseline)
+/// - Fix setup attribute for answer SDP (loopback mode)
+/// - Ensure proper a=setup value (active/passive/actpass)
 /// - NO codec filtering, NO packetization-mode change
-String _fixSdp(String sdp) {
+String _fixSdp(String sdp, {bool isAnswer = false}) {
   var s = sdp;
   // cloudplayplus_stone: only profile-level-id replacement
   s = s.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+
+  // For loopback answer: fix setup attribute
+  // Ensure answer SDP has proper a=setup value
+  if (isAnswer) {
+    // Check current setup value and replace if invalid
+    final setupMatch = RegExp(r'a=setup:(\w+)').firstMatch(s);
+    if (setupMatch == null) {
+      // No setup attribute found, add active setup after fingerprint line
+      s = s.replaceAllMapped(
+        RegExp(r'(a=fingerprint:[^\r\n]+[\r\n]+)'),
+        (match) => '${match.group(1)}a=setup:active\r\n',
+      );
+      // If fingerprint not found, try adding after ice-options
+      if (!s.contains('a=setup:active')) {
+        s = s.replaceAllMapped(
+          RegExp(r'(a=ice-options:[^\r\n]+[\r\n]+)'),
+          (match) => '${match.group(1)}a=setup:active\r\n',
+        );
+      }
+    } else {
+      final setupValue = setupMatch.group(1)!;
+      // Replace actpass with active for answer
+      if (setupValue == 'actpass') {
+        s = s.replaceAll('a=setup:actpass', 'a=setup:active');
+      }
+    }
+  }
+
   return s;
 }
 
@@ -411,12 +442,28 @@ String _fixSdp(String sdp) {
         id: cmd.id,
         code: 'invalid_payload',
         message: 'setRemoteDescription requires type and sdp',
+        details: {'type': type?.runtimeType.toString(), 'sdp': sdp?.runtimeType.toString()},
       );
     }
 
     final description = RTCSessionDescription(sdp, type);
-    await _pc!.setRemoteDescription(description);
-    
+    try {
+      await _pc!.setRemoteDescription(description);
+    } catch (e, stack) {
+      print('[WebRTCBlock] setRemoteDescription failed: ${e.runtimeType}: $e');
+      return Ack.fail(
+        id: cmd.id,
+        code: 'set_remote_desc_failed',
+        message: 'setRemoteDescription failed: $e',
+        details: {
+          'sdpLength': sdp.length,
+          'type': type,
+          'errorType': e.runtimeType.toString(),
+          'stack': stack.toString(),
+        },
+      );
+    }
+
     // cloudplayplus_stone: after setRemoteDescription, flush buffered candidates
     _remoteDescriptionSet = true;
     while (_pendingCandidates.isNotEmpty) {
@@ -450,25 +497,51 @@ String _fixSdp(String sdp) {
 
     final candidate = cmd.payload?['candidate'];
     final sdpMid = cmd.payload?['sdpMid'];
-    final sdpMLineIndex = cmd.payload?['sdpMLineIndex'];
+    final sdpMLineIndexRaw = cmd.payload?['sdpMLineIndex'];
 
-    if (candidate is! String) {
+    // Robust validation for candidate
+    if (candidate is! String || candidate.trim().isEmpty) {
       return Ack.fail(
         id: cmd.id,
         code: 'invalid_payload',
-        message: 'addIceCandidate requires candidate',
+        message: 'addIceCandidate requires non-empty candidate string',
+        details: {'candidateType': candidate.runtimeType.toString()},
       );
     }
 
-    await _pc!.addCandidate(
-      RTCIceCandidate(
-        candidate,
-        sdpMid is String ? sdpMid : null,
-        sdpMLineIndex is int ? sdpMLineIndex : null,
-      ),
-    );
+    // Robust parsing for sdpMLineIndex (handle int/double/string/null)
+    int? sdpMLineIndex;
+    if (sdpMLineIndexRaw is int) {
+      sdpMLineIndex = sdpMLineIndexRaw;
+    } else if (sdpMLineIndexRaw is double) {
+      sdpMLineIndex = sdpMLineIndexRaw.toInt();
+    } else if (sdpMLineIndexRaw is String) {
+      sdpMLineIndex = int.tryParse(sdpMLineIndexRaw);
+    }
 
-    return Ack.ok(id: cmd.id, data: {'success': true});
+    try {
+      await _pc!.addCandidate(
+        RTCIceCandidate(
+          candidate,
+          sdpMid is String ? sdpMid : null,
+          sdpMLineIndex,
+        ),
+      );
+      return Ack.ok(id: cmd.id, data: {'success': true});
+    } catch (e, stack) {
+      print('[WebRTCBlock] addCandidate failed: $e');
+      return Ack.fail(
+        id: cmd.id,
+        code: 'add_ice_failed',
+        message: 'Failed to add ICE candidate: $e',
+        details: {
+          'candidateLength': candidate.length,
+          'sdpMid': sdpMid,
+          'sdpMLineIndex': sdpMLineIndex,
+          'error': e.toString(),
+        },
+      );
+    }
   }
 
   Future<Ack> _createAnswer(Command cmd) async {
@@ -480,21 +553,48 @@ String _fixSdp(String sdp) {
       );
     }
 
-    final answer = await _pc!.createAnswer();
-    
-    // Apply _fixSdp to answer (cloudplayplus_stone approach)
-    final fixedSdp = _fixSdp(answer.sdp ?? '');
-    answer.sdp = fixedSdp;
-    
-    await _pc!.setLocalDescription(answer);
+    try {
+      final answer = await _pc!.createAnswer();
 
-    return Ack.ok(
-      id: cmd.id,
-      data: {
-        'type': 'answer',
-        'sdp': answer.sdp,
-      },
-    );
+      // Validate answer SDP
+      if (answer.sdp == null || answer.sdp!.isEmpty) {
+        return Ack.fail(
+          id: cmd.id,
+          code: 'create_answer_failed',
+          message: 'createAnswer returned null or empty SDP. Remote description may not be set.',
+          details: {
+            'hasRemoteDescription': _remoteDescriptionSet,
+            'sdpType': answer.type,
+          },
+        );
+      }
+
+      // Apply _fixSdp to answer (cloudplayplus_stone approach)
+      final fixedSdp = _fixSdp(answer.sdp!, isAnswer: true);
+      answer.sdp = fixedSdp;
+
+      await _pc!.setLocalDescription(answer);
+
+      return Ack.ok(
+        id: cmd.id,
+        data: {
+          'type': 'answer',
+          'sdp': answer.sdp,
+        },
+      );
+    } catch (e, stack) {
+      print('[WebRTCBlock] createAnswer failed: ${e.runtimeType}: $e');
+      return Ack.fail(
+        id: cmd.id,
+        code: 'create_answer_failed',
+        message: 'createAnswer failed: $e',
+        details: {
+          'errorType': e.runtimeType.toString(),
+          'hasRemoteDescription': _remoteDescriptionSet,
+          'stack': stack.toString(),
+        },
+      );
+    }
   }
 
   Future<Ack> _getLoopbackStats(Command cmd) async {
