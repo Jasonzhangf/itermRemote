@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'ip_reporter.dart';
+import 'relay_signaling_service.dart';
 import 'package:flutter/material.dart';
 import 'package:iterm2_host/iterm2/iterm2_bridge.dart';
 import 'package:daemon_ws/ws_server.dart';
@@ -14,6 +15,7 @@ import 'package:itermremote_blocks/itermremote_blocks.dart';
 import 'package:itermremote_blocks/src/blocks/verify_block.dart';
 import 'package:itermremote_blocks/src/blocks/webrtc_block.dart';
 import 'package:itermremote_blocks/src/blocks/capture_source_block.dart';
+import 'package:itermremote_protocol/itermremote_protocol.dart';
 
 /// Orchestrates the daemon startup sequence and block wiring.
 class DaemonOrchestrator {
@@ -35,6 +37,8 @@ class DaemonOrchestrator {
   late final BlockRegistry registry;
   late final WsServer wsServer;
   IpReporter? _ipReporter;
+  RelaySignalingService? _relayService;
+  WebRTCBlock? _webrtcBlock;
 
   Future<void> initialize() async {
     if (!stateDir.existsSync()) {
@@ -84,9 +88,9 @@ class DaemonOrchestrator {
     final capture = CaptureBlock(iterm2: bridge);
     registry.register(capture);
 
-
     final webrtc = WebRTCBlock();
     registry.register(webrtc);
+    _webrtcBlock = webrtc;
 
     final captureSource = CaptureSourceBlock();
     registry.register(captureSource);
@@ -129,9 +133,84 @@ class DaemonOrchestrator {
       await _ipReporter!.start();
       // ignore: avoid_print
       print('[orchestrator] IP reporter started');
+
+      // Start relay signaling service for NAT traversal
+      _relayService = RelaySignalingService(
+        serverHost: 'code.codewhisper.cc',
+        serverPort: 8081,
+        token: token,
+      );
+      
+      // Wire relay callbacks to WebRTC block
+      _setupRelayCallbacks(ctx);
+      
+      await _relayService!.start();
+      // ignore: avoid_print
+      print('[orchestrator] Relay signaling service started');
     }
 
     _triggerLocalNetworkPrompt();
+  }
+
+  void _setupRelayCallbacks(BlockContext ctx) {
+    if (_relayService == null || _webrtcBlock == null) return;
+
+    _relayService!.onOfferReceived = (payload) async {
+      // ignore: avoid_print
+      print('[orchestrator] Relay: received offer');
+      // Forward to WebRTC block
+      final cmd = Command(
+        version: 1,
+        id: 'relay-offer-${DateTime.now().millisecondsSinceEpoch}',
+        target: 'webrtc',
+        action: 'setRemoteDescription',
+        payload: payload,
+      );
+      await _webrtcBlock!.handle(cmd);
+    };
+
+    _relayService!.onAnswerReceived = (payload) async {
+      // ignore: avoid_print
+      print('[orchestrator] Relay: received answer');
+      final cmd = Command(
+        version: 1,
+        id: 'relay-answer-${DateTime.now().millisecondsSinceEpoch}',
+        target: 'webrtc',
+        action: 'setRemoteDescription',
+        payload: payload,
+      );
+      await _webrtcBlock!.handle(cmd);
+    };
+
+    _relayService!.onCandidateReceived = (payload) async {
+      // ignore: avoid_print
+      print('[orchestrator] Relay: received candidate');
+      final cmd = Command(
+        version: 1,
+        id: 'relay-candidate-${DateTime.now().millisecondsSinceEpoch}',
+        target: 'webrtc',
+        action: 'addIceCandidate',
+        payload: payload,
+      );
+      await _webrtcBlock!.handle(cmd);
+    };
+
+    // Listen to WebRTC events and forward via relay
+    bus.stream.where((e) => e.source == 'webrtc').listen((event) {
+      if (_relayService?.isConnected != true) return;
+
+      if (event.event == 'iceCandidate' && event.payload != null) {
+        final payload = event.payload as Map<String, dynamic>?;
+        if (payload != null) {
+          // Broadcast to all connected clients
+          _relayService!.sendCandidate(payload, targetDeviceId: 'broadcast');
+        }
+      } else if (event.event == 'loopbackStarted') {
+        // When WebRTC starts, we're ready to receive connections
+        // ignore: avoid_print
+        print('[orchestrator] WebRTC ready for relay connections');
+      }
+    });
   }
 
   Future<void> _killStaleDaemon(File pidFile) async {
