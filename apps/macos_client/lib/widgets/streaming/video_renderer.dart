@@ -17,6 +17,7 @@ class _VideoRendererState extends State<VideoRenderer> with GestureControllerMix
   final GlobalKey _containerKey = GlobalKey();
   bool _initialized = false;
   bool _hasStream = false;
+  StreamSubscription<MediaStream>? _streamSub;
 
   @override
   void initState() {
@@ -27,7 +28,7 @@ class _VideoRendererState extends State<VideoRenderer> with GestureControllerMix
   Future<void> _init() async {
     await _renderer.initialize();
     _initialized = true;
-    ConnectionService.instance.remoteStream.listen((stream) {
+    _streamSub = ConnectionService.instance.remoteStream.listen((stream) {
       if (mounted && stream != null) {
         setState(() {
           _renderer.srcObject = stream;
@@ -39,6 +40,7 @@ class _VideoRendererState extends State<VideoRenderer> with GestureControllerMix
 
   @override
   void dispose() {
+    _streamSub?.cancel();
     _renderer.dispose();
     super.dispose();
   }

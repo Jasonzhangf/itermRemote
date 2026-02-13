@@ -305,4 +305,13 @@ class DaemonOrchestrator {
       } catch (_) {}
     } catch (_) {}
   }
+
+  Future<void> dispose() async {
+    await _ipReporter?.stop();
+    await _relayService?.stop();
+    await wsServer.stop();
+    await registry.dispose();
+    _ipReporter = null;
+    _relayService = null;
+  }
 }
