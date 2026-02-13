@@ -59,19 +59,28 @@ else
     )
   fi
 
-  # Launch exact built binary to avoid LaunchServices reusing /Applications copy.
-  nohup env \
-    ITERMREMOTE_WS_PORT="$PORT" \
-    ITERMREMOTE_REPO_ROOT="$REPO_ROOT" \
-    ITERMREMOTE_HEADLESS=1 \
-    NSQuitAlwaysKeepsWindows=0 \
-    "$RELEASE_BIN" >> "$LOG_FILE" 2>&1 &
+  # Use open to launch the .app bundle to preserve bundle ID and permissions
+  # This ensures macOS screen recording permission is remembered across runs
+  nohup open -W -n "$RELEASE_APP" --args \
+    --ITERMREMOTE_WS_PORT="$PORT" \
+    --ITERMREMOTE_REPO_ROOT="$REPO_ROOT" \
+    --ITERMREMOTE_HEADLESS=1 \
+    --NSQuitAlwaysKeepsWindows=0 \
+    >> "$LOG_FILE" 2>&1 &
 
-  # Write PID file from real process
-  sleep 1
-  REAL_PID=$(pgrep -f "$RELEASE_BIN" | head -1 || true)
+  # Wait for process to start and get PID
+  sleep 2
+  REAL_PID=$(pgrep -f "itermremote.app/Contents/MacOS/itermremote" | head -1 || true)
   if [ -n "$REAL_PID" ]; then
     echo "$REAL_PID" > /tmp/itermremote_host.pid
+    echo "$REAL_PID" > /tmp/itermremote_host_real.pid
+  else
+    # Fallback: find by bundle ID
+    REAL_PID=$(pgrep -f "com.itermremote.host-daemon" | head -1 || true)
+    if [ -n "$REAL_PID" ]; then
+      echo "$REAL_PID" > /tmp/itermremote_host.pid
+      echo "$REAL_PID" > /tmp/itermremote_host_real.pid
+    fi
   fi
 fi
 
@@ -102,6 +111,16 @@ if [ -f "$REPO_ROOT/scripts/check_app_logs.sh" ]; then
 else
   echo "⚠️ check_app_logs.sh not found"
 fi
+
+# Show recent app logs
+echo ""
+echo "📋 Recent app logs (last 30s):"
+log show --style compact --last 30s --predicate 'process == "itermremote"' 2>/dev/null | \
+  grep -v "com.apple" | \
+  grep -v "activating connection" | \
+  grep -v "Connection returned" | \
+  grep -v "xpc:" | \
+  tail -30 || echo "  (no logs found)"
 
 REAL_PID_FILE="/tmp/itermremote_host_real.pid"
 REAL_PID=$(pgrep -f "$RELEASE_BIN" | head -1 || true)

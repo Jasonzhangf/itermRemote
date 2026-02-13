@@ -50,4 +50,11 @@ class BlockRegistry {
     }
     return out;
   }
+
+  Future<void> dispose() async {
+    for (final b in _blocks.values) {
+      await b.dispose();
+    }
+    _blocks.clear();
+  }
 }

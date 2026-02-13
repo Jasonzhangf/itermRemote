@@ -79,7 +79,7 @@ class WebRTCBlock implements Block {
 
  @override
  Future<Ack> handle(Command cmd) async {
-   stderr.writeln('[WebRTCBlock] handle START: action=\${cmd.action} id=\${cmd.id} target=\${cmd.target}');
+   stderr.writeln('[WebRTCBlock] handle START: action=${cmd.action} id=${cmd.id} target=${cmd.target}');
    try {
      final payload = cmd.payload;
      switch (cmd.action) {
@@ -127,54 +127,109 @@ class WebRTCBlock implements Block {
 
     final sourceTypeAny = payload['sourceType'];
     final sourceType = sourceTypeAny?.toString() ?? 'screen';
-    print("[WebRTCBlock] startLoopback called with sourceType=\$sourceType");
+    print("[WebRTCBlock] startLoopback called with sourceType=$sourceType");
 
     final sourceIdAny = payload['sourceId'];
     final sourceId = sourceIdAny?.toString() ?? '';
 
-    final cropRect = payload['cropRect'] ?? <String, Object?>{};
+    final cropRectRaw = payload['cropRect'];
+    final cropRect = (cropRectRaw is Map<String, dynamic>) ? cropRectRaw : <String, dynamic>{};
 
     final fpsAny = payload['fps'];
-    final fps = fpsAny is int ? fpsAny : int.tryParse('\${fpsAny ?? 30}') ?? 30;
+    final fps = fpsAny is int ? fpsAny : int.tryParse('${fpsAny ?? 30}') ?? 30;
 
     final widthAny = payload['width'];
-    final width = widthAny is int ? widthAny : int.tryParse('\${widthAny ?? 1920}') ?? 1920;
+    final width = widthAny is int ? widthAny : int.tryParse('${widthAny ?? 1920}') ?? 1920;
 
     final heightAny = payload['height'];
-    final height = heightAny is int ? heightAny : int.tryParse('\${heightAny ?? 1080}') ?? 1080;
+    final height = heightAny is int ? heightAny : int.tryParse('${heightAny ?? 1080}') ?? 1080;
 
    final bitrateAny = payload['bitrateKbps'];
    final bitrateKbps = bitrateAny is int
        ? bitrateAny
        : (bitrateAny != null ? int.tryParse(bitrateAny.toString()) : null) ?? computeHighQualityBitrateKbps(width: width, height: height);
-    
-    print('[WebRTCBlock] startLoopback params:');
-    print('  sourceType=\$sourceType sourceId=\$sourceId');
-    print('  fps=\$fps size=\${width}x\$height');
-    print('  bitrateKbps=\$bitrateKbps');
-    print('  cropRect=\$cropRect');
 
-    // Request display media with proper constraints for high frame rate
+    // Normalize cropRect values to ensure all keys have valid doubles
+    final normalizedCropRect = <String, dynamic>{};
+    if (cropRect.isNotEmpty) {
+      for (final entry in cropRect.entries) {
+        final v = entry.value;
+        if (v is num) {
+          normalizedCropRect[entry.key] = v.toDouble();
+        }
+      }
+    }
+
+    print('[WebRTCBlock] startLoopback params:');
+    print('  sourceType=$sourceType sourceId=$sourceId');
+    print('  fps=$fps size=${width}x$height');
+    print('  bitrateKbps=$bitrateKbps');
+    print('  cropRect=$normalizedCropRect');
+
+    // Build media constraints with sourceId and cropRect support
     final mediaConstraints = <String, dynamic>{
       'audio': false,
-      'video': {
-        'mandatory': {
-          'minWidth': width,
-          'minHeight': height,
-          'maxWidth': width,
-          'maxHeight': height,
-          'minFrameRate': fps,
-          'maxFrameRate': fps,
-        },
-        'optional': [
-          {'googCpuOveruseDetection': true},
-        ],
-      },
+      'video': <String, dynamic>{},
     };
 
-    print("[WebRTCBlock] Requesting display media with constraints: \$mediaConstraints");
-    _localStream = await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
-    print("[WebRTCBlock] Got stream with \${_localStream?.getVideoTracks().length} video tracks");
+    final videoConstraints = mediaConstraints['video'] as Map<String, dynamic>;
+
+    // Build optional list
+    final optionalConstraints = <Map<String, dynamic>>[];
+
+    videoConstraints['mandatory'] = {
+      'minWidth': width,
+      'minHeight': height,
+      'maxWidth': width,
+      'maxHeight': height,
+      'minFrameRate': fps,
+      'maxFrameRate': fps,
+    };
+
+    // NOTE: deviceId constraint causes "type 'Null' is not a subtype of type 'String'" error
+    // on macOS flutter_webrtc. For window capture, we use cropRect on full screen capture
+    // and skip deviceId entirely.
+
+    optionalConstraints.add({'googCpuOveruseDetection': true});
+    videoConstraints['optional'] = optionalConstraints;
+
+    print("[WebRTCBlock] Requesting display media with constraints: $mediaConstraints");
+    MediaStream stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
+      print("[WebRTCBlock] Got stream with ${stream.getVideoTracks().length} video tracks");
+
+      if (stream.getVideoTracks().isEmpty) {
+        print("[WebRTCBlock] ERROR: no video tracks returned");
+        return Ack.fail(
+          id: cmd.id,
+          code: 'no_video_track',
+          message: 'getDisplayMedia returned no video tracks',
+        );
+      }
+
+      _localStream = stream;
+      // Log track settings for debugging
+      final track = stream.getVideoTracks().first;
+      final settings = await track.getSettings();
+      print("[WebRTCBlock] Track settings: $settings");
+    } catch (e, stack) {
+      print('[WebRTCBlock] getDisplayMedia failed: $e');
+      print('[WebRTCBlock] Stack: $stack');
+      print('[WebRTCBlock] Constraints that failed: $mediaConstraints');
+      return Ack.fail(
+        id: cmd.id,
+        code: 'get_display_media_failed',
+        message: 'Failed to get display media: $e',
+        details: {
+          'error': e.toString(),
+          'errorType': e.runtimeType.toString(),
+          'sourceType': sourceType,
+          'sourceId': sourceId,
+          'constraints': mediaConstraints.toString(),
+        },
+      );
+    }
 
     // CRITICAL: Use unified-plan (cloudplayplus_stone approach)
     _pc = await createPeerConnection({
@@ -225,8 +280,9 @@ class WebRTCBlock implements Block {
       }
     };
 
-   final track = _localStream!.getVideoTracks().first;
-   _sender = await _pc!.addTrack(track, _localStream!);
+    // Add track to peer connection
+    final track = _localStream!.getVideoTracks().first;
+    _sender = await _pc!.addTrack(track, _localStream!);
    
     // Apply encoding parameters via sender.parameters for max framerate and bitrate
     try {
@@ -250,7 +306,7 @@ class WebRTCBlock implements Block {
       }
       await _sender!.setParameters(params);
     } catch (e) {
-      print('[WebRTCBlock] WARNING: setParameters failed: \$e');
+      print('[WebRTCBlock] WARNING: setParameters failed: $e');
     }
     
     // Start frame rate tracking
@@ -277,7 +333,7 @@ class WebRTCBlock implements Block {
       'loopbackActive': true,
       'loopbackSourceType': sourceType,
       'loopbackSourceId': sourceId,
-      'loopbackCropRect': cropRect,
+      'loopbackCropRect': normalizedCropRect.isNotEmpty ? normalizedCropRect : cropRect,
       'loopbackStartTime': DateTime.now().millisecondsSinceEpoch,
       'loopbackFps': fps,
       'loopbackBitrateKbps': bitrateKbps,
@@ -308,7 +364,7 @@ class WebRTCBlock implements Block {
     final elapsed = DateTime.now().difference(_fpsStartTime!).inMilliseconds / 1000.0;
     if (elapsed > 0) {
       _actualFps = _frameCount / elapsed;
-      print('[WebRTCBlock] Actual FPS: \${_actualFps.toStringAsFixed(2)}');
+      print('[WebRTCBlock] Actual FPS: ${_actualFps.toStringAsFixed(2)}');
     }
   }
 
@@ -368,9 +424,11 @@ Future<Ack> _createOffer(Command cmd) async {
     'optional': [],
   });
 
-  // 2. Apply _fixSdp (cloudplayplus_stone approach)
+  // 2. Apply _fixSdp (profile-level-id replacement) AND _fixSdpBitrate (bitrate injection)
   final fixedSdpStr = _fixSdp(sdp.sdp ?? '');
-  sdp.sdp = fixedSdpStr;
+  final bitrate = (_state['loopbackBitrateKbps'] as int? ?? 2000).clamp(250, 20000);
+  final fixedSdpWithBitrate = _fixSdpBitrate(fixedSdpStr, bitrate);
+  sdp.sdp = fixedSdpWithBitrate;
 
   // 3. setLocalDescription with THE SAME fixed SDP
   await _pc!.setLocalDescription(sdp);
@@ -392,8 +450,9 @@ Future<Ack> _createOffer(Command cmd) async {
 /// - NO codec filtering, NO packetization-mode change
 String _fixSdp(String sdp, {bool isAnswer = false}) {
   var s = sdp;
-  // cloudplayplus_stone: only profile-level-id replacement
-  s = s.replaceAll('profile-level-id=640c1f', 'profile-level-id=42e032');
+  // cloudplayplus_stone: only profile-level-id replacement (use word boundaries to avoid partial matches)
+  // Replace all variants of 640c1f/640c33 with 42e032 (H.264 baseline)
+  s = s.replaceAll(RegExp(r'profile-level-id=640c[0-9a-f]{2}\b'), 'profile-level-id=42e032');
 
   // For loopback answer: fix setup attribute
   // Ensure answer SDP has proper a=setup value
@@ -423,6 +482,74 @@ String _fixSdp(String sdp, {bool isAnswer = false}) {
   }
 
   return s;
+}
+
+/// Fix SDP bitrate: inject b=AS and x-google bitrate fields
+/// - Add b=AS after c=IN line in video section
+/// - Inject x-google-max/min/start-bitrate into a=fmtp lines
+String _fixSdpBitrate(String sdp, int bitrateKbps) {
+  final trimmed = sdp.trim();
+  if (trimmed.isEmpty) return sdp;
+
+  final bitrate = bitrateKbps.clamp(250, 20000);
+  final usesCrLf = sdp.contains("\r\n");
+  final normalized = sdp.replaceAll("\r\n", "\n");
+  final lines = normalized.split("\n");
+
+  bool inVideo = false;
+  bool insertedB = false;
+  final out = <String>[];
+
+  for (final line in lines) {
+    if (line.startsWith("m=")) {
+      inVideo = line.startsWith("m=video");
+      insertedB = false;
+      out.add(line);
+      continue;
+    }
+
+    if (!inVideo) {
+      out.add(line);
+      continue;
+    }
+
+    if (line.startsWith("b=AS:")) {
+      if (!insertedB) {
+        out.add("b=AS:$bitrate");
+        insertedB = true;
+      }
+      continue;
+    }
+
+    if (line.startsWith("c=IN")) {
+      out.add(line);
+      if (!insertedB) {
+        out.add("b=AS:$bitrate");
+        insertedB = true;
+      }
+      continue;
+    }
+
+    if (line.startsWith("a=fmtp:")) {
+      var cleaned = line.replaceAll(
+        RegExp(r";?x-google-(max|min|start)-bitrate=\d+"),
+        "",
+      );
+      while (cleaned.contains(";;")) {
+        cleaned = cleaned.replaceAll(";;", ";");
+      }
+      if (cleaned.endsWith(";")) {
+        cleaned = cleaned.substring(0, cleaned.length - 1);
+      }
+      out.add("$cleaned;x-google-max-bitrate=$bitrate;x-google-min-bitrate=$bitrate;x-google-start-bitrate=$bitrate");
+      continue;
+    }
+
+    out.add(line);
+  }
+
+  final fixed = out.join("\n");
+  return usesCrLf ? fixed.replaceAll("\n", "\r\n") : fixed;
 }
 
   Future<Ack> _setRemoteDescription(Command cmd) async {

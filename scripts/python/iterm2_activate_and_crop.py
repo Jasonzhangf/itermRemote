@@ -42,10 +42,14 @@ def _find_iterm2_cg_window_id_by_owner(rawWindowFrame=None):
             # If rawWindowFrame provided, match by frame bounds.
             if rawWindowFrame:
                 bounds = win_info.get("kCGWindowBounds", {})
-                wx = bounds.get("X", 0)
-                wy = bounds.get("Y", 0)
-                ww = bounds.get("Width", 0)
-                wh = bounds.get("Height", 0)
+                # Convert NSDictionary to plain dict for easier access
+                try:
+                    wx = float(bounds.get("X", 0) if hasattr(bounds, "get") else bounds["X"])
+                    wy = float(bounds.get("Y", 0) if hasattr(bounds, "get") else bounds["Y"])
+                    ww = float(bounds.get("Width", 0) if hasattr(bounds, "get") else bounds["Width"])
+                    wh = float(bounds.get("Height", 0) if hasattr(bounds, "get") else bounds["Height"])
+                except (KeyError, TypeError, AttributeError):
+                    continue
                 # CGWindow bounds are in global coords, but macOS may report
                 # slightly different Y due to menu bar / system UI.
                 # Match primarily by X/Width/Height, and allow larger Y slack.
@@ -289,12 +293,22 @@ async def main(connection):
                 "w": float(wf.size.width),
                 "h": float(wf.size.height),
             }
-            try:
-                out["cgWindowId"] = _find_iterm2_cg_window_id_by_owner(out["rawWindowFrame"])
-            except Exception:
-                out["cgWindowId"] = _find_iterm2_cg_window_id_by_owner()
+    except Exception as e:
+        sys.stderr.write(f"Warning: frame extraction failed: {e}\n")
+
+    # Find CGWindowId (must run after rawWindowFrame is set)
+    raw_frame = out.get("rawWindowFrame")
+    try:
+        cg_id = _find_iterm2_cg_window_id_by_owner(raw_frame)
+        if cg_id:
+            out["cgWindowId"] = cg_id
     except Exception:
         pass
+    if not out.get("cgWindowId"):
+        try:
+            out["cgWindowId"] = _find_iterm2_cg_window_id_by_owner()
+        except Exception:
+            pass
 
     print(json.dumps(out, ensure_ascii=False))
 
