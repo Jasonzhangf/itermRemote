@@ -30,6 +30,12 @@
 	<string>iTermRemote needs Apple Events permission to control iTerm2 sessions for panel switching and capture.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>iTermRemote needs local network access to allow daemon control and discovery.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>iTermRemote needs screen recording permission to capture terminal sessions for remote access.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>iTermRemote needs camera access for video streaming features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>iTermRemote needs microphone access for audio features.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

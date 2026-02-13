@@ -1,5 +1,12 @@
 #!/bin/bash
 # Host Daemon start script with stable app identity + log checking
+#
+# To avoid repeated macOS permission prompts:
+# 1. App is built to build/macos/Build/Products/Release/
+# 2. Copied to /Applications/itermremote.app (stable location)
+# 3. Launched from stable location to preserve TCC permissions
+#
+# For custom app path: ITERMREMOTE_APP_PATH=/path/to/app.app ./start_host_daemon.sh
 
 set -euo pipefail
 
@@ -20,9 +27,15 @@ done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$REPO_ROOT/apps/host_daemon"
-RELEASE_APP="$APP_DIR/build/macos/Build/Products/Release/itermremote.app"
-RELEASE_BIN="$RELEASE_APP/Contents/MacOS/itermremote"
+BUILD_APP="$APP_DIR/build/macos/Build/Products/Release/itermremote.app"
+RELEASE_BIN="$BUILD_APP/Contents/MacOS/itermremote"
 DEBUG_APP="$APP_DIR/build/macos/Build/Products/Debug/itermremote.app"
+
+# Stable app location to preserve macOS permissions across rebuilds
+# When app is copied to /Applications, macOS tracks it by path+bundle ID
+# Adhoc signatures change on rebuild, but stable path helps TCC recognition
+STABLE_APP="/Applications/itermremote.app"
+RELEASE_APP="${ITERMREMOTE_APP_PATH:-$STABLE_APP}"
 
 # Kill existing daemon
 bash "$REPO_ROOT/scripts/stop_host_daemon.sh" 2>/dev/null || true
@@ -52,11 +65,33 @@ if [ "$MODE" = "debug" ]; then
   echo $WRAPPER_PID > /tmp/itermremote_host.pid
 else
   # Rebuild by default when sources changed to ensure latest runtime code is loaded.
-  if [ $REBUILD -eq 1 ] || [ ! -d "$RELEASE_APP" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain apps/host_daemon packages/itermremote_blocks packages/iterm2_host src/modules/daemon_ws 2>/dev/null)" ]; then
+  if [ $REBUILD -eq 1 ] || [ ! -d "$BUILD_APP" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain apps/host_daemon packages/itermremote_blocks packages/iterm2_host src/modules/daemon_ws 2>/dev/null)" ]; then
+    echo "Building macOS application..."
     (
       cd "$APP_DIR"
       flutter build macos --release 2>&1 | tee "$LOG_FILE"
     )
+
+    # Copy to stable location to preserve macOS TCC permissions
+    # This helps avoid repeated permission prompts when adhoc signature changes
+    if [ -d "$BUILD_APP" ] && [ "$RELEASE_APP" != "$BUILD_APP" ]; then
+      echo "Copying to stable location: $RELEASE_APP"
+      rm -rf "$RELEASE_APP"
+      cp -R "$BUILD_APP" "$RELEASE_APP"
+    fi
+  fi
+
+  # Verify app exists
+  if [ ! -d "$RELEASE_APP" ]; then
+    # If stable location is empty but build exists, copy it
+    if [ -d "$BUILD_APP" ]; then
+      echo "Copying to stable location: $RELEASE_APP"
+      cp -R "$BUILD_APP" "$RELEASE_APP"
+    else
+      echo "❌ App not found: $RELEASE_APP"
+      echo "   Build it first with: cd $APP_DIR && flutter build macos --release"
+      exit 1
+    fi
   fi
 
   # Use open to launch the .app bundle to preserve bundle ID and permissions
@@ -123,7 +158,7 @@ log show --style compact --last 30s --predicate 'process == "itermremote"' 2>/de
   tail -30 || echo "  (no logs found)"
 
 REAL_PID_FILE="/tmp/itermremote_host_real.pid"
-REAL_PID=$(pgrep -f "$RELEASE_BIN" | head -1 || true)
+REAL_PID=$(pgrep -f "$RELEASE_APP/Contents/MacOS/itermremote" | head -1 || true)
 if [ -n "$REAL_PID" ]; then
   echo $REAL_PID > "$REAL_PID_FILE"
   echo "REAL_PID: $REAL_PID"
@@ -132,4 +167,5 @@ else
 fi
 
 echo "PID: $(cat /tmp/itermremote_host.pid 2>/dev/null || echo unknown)"
+echo "App: $RELEASE_APP"
 echo "Logs: tail -f $LOG_FILE"
