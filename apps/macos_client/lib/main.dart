@@ -51,7 +51,17 @@ void main() async {
               });
             } catch (_) {}
           }
-          return {'success': true, 'action': action, 'connected': ConnectionService.instance.isConnected};
+return {'success': true, 'action': action, 'connected': ConnectionService.instance.isConnected};
+        case 'connectViaRelay':
+          final hostDeviceId = params['hostDeviceId'] ?? 'host-loopback-test';
+          print('[Automation] Connecting via relay: $hostDeviceId');
+          await ConnectionService.instance.connectViaRelay(hostDeviceId: hostDeviceId);
+          return {
+            'success': true,
+            'action': action,
+            'hostDeviceId': hostDeviceId,
+            'connected': ConnectionService.instance.isConnected,
+          };
         case 'connectIPv6':
           final hostId = params['hostId'] ?? 'unknown';
           final ipv6 = params['ipv6'] ?? '';
@@ -129,10 +139,10 @@ class _ITerm2RemoteAppState extends State<ITerm2RemoteApp> with WidgetsBindingOb
     }
   }
 
-  Future<void> _tryAutoLogin() async {
+Future<void> _tryAutoLogin() async {
     // For macOS local testing: auto-login with test account
-    const testUsername = 'test';
-    const testPassword = 'test123456';
+    const testUsername = 'testrelay';
+    const testPassword = 'testpass123';
     
     print('[AutoLogin] Attempting auto-login with $testUsername');
     final result = await AuthService.instance.login(testUsername, testPassword);

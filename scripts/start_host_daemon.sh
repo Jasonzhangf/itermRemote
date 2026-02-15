@@ -53,6 +53,21 @@ echo "Mode: $MODE"
 echo "Port: $PORT"
 echo "Log: $LOG_FILE"
 
+# Ensure token file is present for daemon_orchestrator fallback
+if [ -n "${ITERMREMOTE_TOKEN:-}" ]; then
+  echo -n "$ITERMREMOTE_TOKEN" > /tmp/itermremote_test_token.txt
+  echo "Token: written to /tmp/itermremote_test_token.txt from env"
+fi
+
+# Check for token file (daemon_orchestrator will read it)
+if [ -f /tmp/itermremote_test_token.txt ]; then
+  echo "Token: found (/tmp/itermremote_test_token.txt)"
+  token_len=$(wc -c < /tmp/itermremote_test_token.txt | tr -d ' ')
+  echo "Token length: $token_len bytes"
+else
+  echo "Token: not found (relay will be disabled)"
+fi
+
 if [ "$MODE" = "debug" ]; then
   (
     cd "$APP_DIR"
@@ -64,8 +79,23 @@ if [ "$MODE" = "debug" ]; then
   WRAPPER_PID=$!
   echo $WRAPPER_PID > /tmp/itermremote_host.pid
 else
-  # Rebuild by default when sources changed to ensure latest runtime code is loaded.
-  if [ $REBUILD -eq 1 ] || [ ! -d "$BUILD_APP" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain apps/host_daemon packages/itermremote_blocks packages/iterm2_host src/modules/daemon_ws 2>/dev/null)" ]; then
+  # Force rebuild if --rebuild flag is set
+  if [ $REBUILD -eq 1 ]; then
+    echo "Forcing rebuild (--rebuild flag set)..."
+    rm -rf "$RELEASE_APP"
+    rm -rf "$BUILD_APP"
+    (
+      cd "$APP_DIR"
+      flutter build macos --release 2>&1 | tee "$LOG_FILE"
+    )
+
+    # Copy to stable location to preserve macOS TCC permissions
+    if [ -d "$BUILD_APP" ] && [ "$RELEASE_APP" != "$BUILD_APP" ]; then
+      echo "Copying to stable location: $RELEASE_APP"
+      rm -rf "$RELEASE_APP"
+      cp -R "$BUILD_APP" "$RELEASE_APP"
+    fi
+  elif [ ! -d "$BUILD_APP" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain apps/host_daemon packages/itermremote_blocks packages/iterm2_host src/modules/daemon_ws 2>/dev/null)" ]; then
     echo "Building macOS application..."
     (
       cd "$APP_DIR"
@@ -96,12 +126,15 @@ else
 
   # Use open to launch the .app bundle to preserve bundle ID and permissions
   # This ensures macOS screen recording permission is remembered across runs
+  # Note: open command doesn't forward env vars reliably, so we use temp file approach
   nohup open -W -n "$RELEASE_APP" --args \
     --ITERMREMOTE_WS_PORT="$PORT" \
     --ITERMREMOTE_REPO_ROOT="$REPO_ROOT" \
     --ITERMREMOTE_HEADLESS=1 \
     --NSQuitAlwaysKeepsWindows=0 \
     >> "$LOG_FILE" 2>&1 &
+
+  echo "Started daemon (waiting for initialization...)"
 
   # Wait for process to start and get PID
   sleep 2
@@ -135,9 +168,13 @@ if [ $READY -ne 1 ]; then
   exit 1
 fi
 
-# Refresh log snapshot for release mode via unified macOS log stream
+# Show recent daemon logs from log stream (daemon uses print() which goes to stdout)
 if [ "$MODE" = "release" ]; then
-  log show --style compact --last 2m --predicate 'process == "itermremote"' >> "$LOG_FILE" 2>/dev/null || true
+  echo ""
+  echo "📋 Daemon stdout logs (last 30s):"
+  log show --style compact --last 30s --predicate 'process == "itermremote"' 2>/dev/null | \
+    grep -E "orchestrator|RelaySignaling|WebRTC|webrtc|Token|token" | \
+    tail -20 || echo "  (no daemon logs found)"
 fi
 
 # Check logs for errors

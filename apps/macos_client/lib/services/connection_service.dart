@@ -18,6 +18,7 @@ class ConnectionService {
   bool _isConnected = false;
   RTCPeerConnection? _peerConnection;
   MediaStream? _remoteStream;
+  RTCVideoRenderer? _videoRenderer;
   int _frameCount = 0;
   int _lastFrameCount = 0;
   int _currentFps = 0;
@@ -26,6 +27,15 @@ class ConnectionService {
   List<ICEServer> _iceServers = [];
   String _apiBaseUrl = 'http://code.codewhisper.cc';
   String? _preferredSessionId;
+
+  void setVideoRenderer(RTCVideoRenderer renderer) {
+    _videoRenderer = renderer;
+    print('[WebRTC] Video renderer set');
+    if (_remoteStream != null) {
+      _videoRenderer!.srcObject = _remoteStream;
+      print('[WebRTC] Attached existing stream to renderer');
+    }
+  }
 
   final Map<String, Completer<Map<String, dynamic>>> _pendingAcks = {};
   
@@ -215,8 +225,23 @@ class ConnectionService {
     
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       print('[WebRTC] onTrack fired! streams=${event.streams.length}');
+      print('[WebRTC] Track kind: ${event.track.kind}, enabled: ${event.track.enabled}');
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams.first;
+        print('[WebRTC] Stream has ${_remoteStream!.getVideoTracks().length} video tracks');
+        for (final track in _remoteStream!.getVideoTracks()) {
+          print('[WebRTC] Video track: ${track.id}, enabled: ${track.enabled}');
+          // Force enable the track
+          track.enabled = true;
+        }
+        // Add stream to a video element if one exists in the UI
+        // In Flutter webrtc, we need to set the stream on the RTCVideoRenderer
+        if (_videoRenderer != null) {
+          _videoRenderer!.srcObject = _remoteStream;
+          print('[WebRTC] Stream attached to video renderer');
+        } else {
+          print('[WebRTC] No video renderer available - stream will not be displayed');
+        }
         _streamController.add(_remoteStream);
         print('[WebRTC] received remote stream - ID: ${_remoteStream!.id}');
         _startFrameCounting();
@@ -371,6 +396,7 @@ class ConnectionService {
               if (received > 0 && !_hasStream) {
                 _hasStream = true;
                 _notifyStateChange();
+                print('[WebRTC] First frame received - stream is live');
               }
             }
             if (fps is num && fps > 0) {
@@ -569,6 +595,11 @@ class ConnectionService {
     final cmd = {'version': 1, 'type': 'cmd', 'id': 'cmd-${DateTime.now().millisecondsSinceEpoch}', 'target': target, 'action': action, 'payload': payload};
     final cmdStr = jsonEncode(cmd);
     print('[WS] Sending: ${cmdStr.substring(0, cmdStr.length > 100 ? 100 : cmdStr.length)}...');
+    if (_relayMode) {
+      // In relay mode, commands should go through relay service
+      print('[WS] In relay mode, ignoring direct send');
+      return;
+    }
     _channel?.sink.add(cmdStr);
   }
 

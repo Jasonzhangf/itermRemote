@@ -70,9 +70,26 @@ class RelaySignalingService {
   void _handleMessage(dynamic data) {
     if (data is! String) return;
 
+    print('[RelaySignaling] RAW MESSAGE: $data');
+
     try {
       final msg = jsonDecode(data) as Map<String, dynamic>;
       final type = msg['type'];
+      print('[RelaySignaling] PARSED: type=$type, keys=${msg.keys.toList()}');
+
+      // Handle connection success message to get device_id
+      if (type == 'connected') {
+        _deviceId = msg['device_id'] as String?;
+        print('[RelaySignaling] Received connected message: ${jsonEncode(msg)}');
+        if (_deviceId != null) {
+          print('[RelaySignaling] Connected with device_id: $_deviceId');
+          // Write marker file for automation
+          final marker = File('/tmp/itermremote_device_id_received');
+          marker.writeAsStringSync('$_deviceId\n');
+        } else {
+          print('[RelaySignaling] Connected message missing device_id');
+        }
+      }
 
       if (type == 'proxy') {
         final channel = msg['channel'] as String?;
@@ -82,16 +99,28 @@ class RelaySignalingService {
         print('[RelaySignaling] Received proxy on channel=$channel from=$sourceDeviceId');
 
         if (channel == 'webrtc-offer' && payload is Map) {
-          onOfferReceived?.call(payload.cast<String, dynamic>());
+          final p = payload.cast<String, dynamic>();
+          p['source_device_id'] = sourceDeviceId;
+          onOfferReceived?.call(p);
         } else if (channel == 'webrtc-answer' && payload is Map) {
           onAnswerReceived?.call(payload.cast<String, dynamic>());
         } else if (channel == 'webrtc-candidate' && payload is Map) {
           onCandidateReceived?.call(payload.cast<String, dynamic>());
         }
+      } else if (type == 'host_presence_ack') {
+        print('[RelaySignaling] Host presence acknowledged, waiting for device_id assignment');
+        // Server may assign device_id later via presence_sync
       } else if (type == 'ice_servers') {
         print('[RelaySignaling] Received ICE servers from server');
       } else if (type == 'presence_sync') {
         print('[RelaySignaling] Presence sync: ${msg['online']}');
+        // Check if our own device_id is in the list
+        if (_deviceId != null) {
+          final online = msg['online'] as List?;
+          if (online != null && online.contains(_deviceId)) {
+            print('[RelaySignaling] Host is visible on relay');
+          }
+        }
       }
     } catch (e) {
       print('[RelaySignaling] Failed to parse message: $e');

@@ -21,8 +21,21 @@ class BlockRegistry {
 
   /// Route a command to the appropriate block.
   Future<Ack> route(Command cmd) async {
+    // Special handling for 'state' target to return global state
+    if (cmd.target == 'state') {
+      if (cmd.action == 'get') {
+        return Ack.ok(id: cmd.id, data: dumpState());
+      } else {
+        return Ack.fail(
+          id: cmd.id,
+          code: 'unsupported_action',
+          message: 'Action ${cmd.action} not supported for target state',
+        );
+      }
+    }
+
     var block = _blocks[cmd.target] ?? _blocks[cmd.target.toLowerCase()];
-    print('[BlockRegistry] route: target=\${cmd.target}, available=\${_blocks.keys.toList()}, found=\${block != null}');
+    print('[BlockRegistry] route: target=${cmd.target}, available=${_blocks.keys.toList()}, found=${block != null}');
     if (block == null) {
       return Ack.fail(
         id: cmd.id,

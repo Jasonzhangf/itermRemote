@@ -89,6 +89,10 @@ class RemoteWsService {
 
       if (json['type'] == 'proxy') {
         print('[RemoteWS] Received proxy from ${json['source_device_id']} on channel ${json['channel']}');
+        final payload = json['payload'];
+        if (payload is Map) {
+          payload['source_device_id'] = json['source_device_id'];
+        }
       } else if (json['type'] == 'presence_sync') {
         print('[RemoteWS] Presence sync: ${json['online']}');
       } else if (json['type'] == 'presence_update') {

@@ -39,13 +39,42 @@ class DaemonOrchestrator {
   IpReporter? _ipReporter;
   RelaySignalingService? _relayService;
   WebRTCBlock? _webrtcBlock;
+  String? _relayTargetDeviceId;
+
+  late final File _logFile;
+
+  void _log(String msg) {
+    final timestamp = DateTime.now().toIso8601String();
+    final line = '[$timestamp] $msg';
+    // ignore: avoid_print
+    print(line);
+    // Also write to file for automation (sync for reliability)
+    try {
+      _logFile.writeAsStringSync('$line\n', mode: FileMode.append, flush: true);
+    } catch (e) {
+      // If file write fails, at least print went to stdout
+      print('[orchestrator] Failed to write log: $e');
+    }
+  }
 
   Future<void> initialize() async {
     if (!stateDir.existsSync()) {
       stateDir.createSync(recursive: true);
     }
-    // ignore: avoid_print
-    print('[orchestrator] stateDir: ${stateDir.path}');
+    // Use absolute path and ensure parent directory exists
+    final logPath = '${stateDir.absolute.path}/daemon.log';
+    _logFile = File(logPath);
+    // Ensure parent directory exists
+    if (!_logFile.parent.existsSync()) {
+      _logFile.parent.createSync(recursive: true);
+    }
+    // Ensure log file exists for writes
+    if (!_logFile.existsSync()) {
+      _logFile.createSync(recursive: true);
+    }
+    _log('[orchestrator] stateDir: ${stateDir.path}');
+    _log('[orchestrator] Log file: ${_logFile.path}');
+    _log('[orchestrator] Log file exists: ${_logFile.existsSync()}');
 
     final crashLog = File('${stateDir.path}/crash.log');
     final heartbeat = File('${stateDir.path}/heartbeat');
@@ -91,6 +120,8 @@ class DaemonOrchestrator {
     final webrtc = WebRTCBlock();
     registry.register(webrtc);
     _webrtcBlock = webrtc;
+    // Print WebRTCBlock address for debugging
+    print('[orchestrator] WebRTCBlock instance: ${webrtc.hashCode}');
 
     final captureSource = CaptureSourceBlock();
     registry.register(captureSource);
@@ -100,39 +131,69 @@ class DaemonOrchestrator {
     registry.register(verify);
 
     for (final b in registry.all) {
-      // ignore: avoid_print
-      print('[orchestrator] init block: ${b.name} (${b.runtimeType})');
+      _log('[orchestrator] init block: ${b.name} (${b.runtimeType})');
       await b.init(ctx);
     }
-    // ignore: avoid_print
-    print('[orchestrator] blocks initialized');
+    _log('[orchestrator] blocks initialized');
 
     final host = '::';  // Listen on both IPv4 and IPv6
     final envPortStr = Platform.environment['ITERMREMOTE_WS_PORT'];
     final envPort = int.tryParse(envPortStr ?? '');
     final port = envPort ?? _wsPort ?? 8766;
-    // ignore: avoid_print
-    print('[orchestrator] ws port env=$envPortStr');
+    _log('[orchestrator] ws port env=$envPortStr');
 
     wsServer = WsServer(registry: registry, bus: bus, host: host, port: port);
 
-    // ignore: avoid_print
-    print('[orchestrator] starting WS server on $host:$port');
+    _log('[orchestrator] starting WS server on $host:$port');
     await wsServer.start();
-    // ignore: avoid_print
-    print('[orchestrator] WS server started');
+    _log('[orchestrator] WS server started');
 
-    // Start IP reporter if token available
-    final token = Platform.environment['ITERMREMOTE_TOKEN'];
+    // Start IP reporter if token available (from env or temp file)
+    var token = Platform.environment['ITERMREMOTE_TOKEN'];
+    _log('[orchestrator] env token: ${token == null ? 'null' : (token.isEmpty ? 'empty' : 'length=${token.length}')}');
+    if (token == null || token.isEmpty) {
+      // Try reading from temp file (for launchd/app launch via open command)
+      final tokenFile = File('/tmp/itermremote_test_token.txt');
+      if (tokenFile.existsSync()) {
+        try {
+          token = tokenFile.readAsStringSync().trim();
+          if (token.isNotEmpty) {
+            _log('[orchestrator] Token loaded from file (length=${token.length})');
+          } else {
+            _log('[orchestrator] Token file empty');
+          }
+        } catch (e) {
+          _log('[orchestrator] Failed to read token file: $e');
+        }
+      } else {
+        _log('[orchestrator] Token file not found at /tmp/itermremote_test_token.txt');
+      }
+    } else {
+      _log('[orchestrator] Token from environment (length=${token.length})');
+    }
     if (token != null && token.isNotEmpty) {
+      _log('[orchestrator] Starting relay services with token length=${token.length}');
+      // Add immediate test connection to verify relay reachable
+      try {
+        final testWs = await WebSocket.connect('ws://code.codewhisper.cc:8081/ws/connect?token=$token');
+        testWs.close();
+        _log('[orchestrator] Relay test connection successful');
+        // Write marker file to indicate relay connectivity
+        final marker = File('/tmp/itermremote_relay_connected');
+        marker.writeAsStringSync('connected at ${DateTime.now().toIso8601String()}');
+      } catch (e) {
+        _log('[orchestrator] Relay test connection failed: $e');
+        // Optionally write failure marker
+        final marker = File('/tmp/itermremote_relay_failed');
+        marker.writeAsStringSync('failed at ${DateTime.now().toIso8601String()}: $e');
+      }
       _ipReporter = IpReporter(
         serverHost: 'code.codewhisper.cc',
         serverPort: 8081,
         token: token,
       );
       await _ipReporter!.start();
-      // ignore: avoid_print
-      print('[orchestrator] IP reporter started');
+      _log('[orchestrator] IP reporter started');
 
       // Start relay signaling service for NAT traversal
       _relayService = RelaySignalingService(
@@ -140,13 +201,14 @@ class DaemonOrchestrator {
         serverPort: 8081,
         token: token,
       );
-      
+
       // Wire relay callbacks to WebRTC block
       _setupRelayCallbacks(ctx);
-      
-      await _relayService!.start();
-      // ignore: avoid_print
-      print('[orchestrator] Relay signaling service started');
+
+      // Start relay service in background to avoid blocking
+      unawaited(_startRelayService());
+    } else {
+      _log('[orchestrator] No token, relay services disabled');
     }
 
     _triggerLocalNetworkPrompt();
@@ -156,8 +218,24 @@ class DaemonOrchestrator {
     if (_relayService == null || _webrtcBlock == null) return;
 
     _relayService!.onOfferReceived = (payload) async {
-      // ignore: avoid_print
-      print('[orchestrator] Relay: received offer');
+      final sourceDeviceId = payload['source_device_id'] as String?;
+      if (sourceDeviceId != null) {
+        _relayTargetDeviceId = sourceDeviceId;
+      }
+      _log('[orchestrator] Relay: received offer, starting loopback first');
+      // Ensure WebRTC is started with a local stream before accepting remote offer
+      if (_webrtcBlock != null) {
+        final startCmd = Command(
+          version: 1,
+          id: 'relay-start-loopback',
+          target: 'webrtc',
+          action: 'startLoopback',
+          payload: {'sourceType': 'screen', 'fps': 30, 'bitrateKbps': 2000},
+        );
+        await _webrtcBlock!.handle(startCmd);
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      _log('[orchestrator] Relay: received offer');
       // Forward to WebRTC block
       final cmd = Command(
         version: 1,
@@ -170,8 +248,7 @@ class DaemonOrchestrator {
     };
 
     _relayService!.onAnswerReceived = (payload) async {
-      // ignore: avoid_print
-      print('[orchestrator] Relay: received answer');
+      _log('[orchestrator] Relay: received answer');
       final cmd = Command(
         version: 1,
         id: 'relay-answer-${DateTime.now().millisecondsSinceEpoch}',
@@ -183,8 +260,7 @@ class DaemonOrchestrator {
     };
 
     _relayService!.onCandidateReceived = (payload) async {
-      // ignore: avoid_print
-      print('[orchestrator] Relay: received candidate');
+      _log('[orchestrator] Relay: received candidate');
       final cmd = Command(
         version: 1,
         id: 'relay-candidate-${DateTime.now().millisecondsSinceEpoch}',
@@ -202,13 +278,12 @@ class DaemonOrchestrator {
       if (event.event == 'iceCandidate' && event.payload != null) {
         final payload = event.payload as Map<String, dynamic>?;
         if (payload != null) {
-          // Broadcast to all connected clients
-          _relayService!.sendCandidate(payload, targetDeviceId: 'broadcast');
+          final target = _relayTargetDeviceId ?? 'broadcast';
+          _relayService!.sendCandidate(payload, targetDeviceId: target);
         }
       } else if (event.event == 'loopbackStarted') {
         // When WebRTC starts, we're ready to receive connections
-        // ignore: avoid_print
-        print('[orchestrator] WebRTC ready for relay connections');
+        _log('[orchestrator] WebRTC ready for relay connections');
       }
     });
   }
@@ -228,8 +303,7 @@ class DaemonOrchestrator {
       if (ps.exitCode != 0) return;
       final cmd = (ps.stdout as String).toLowerCase();
       if (!cmd.contains('itermremote') && !cmd.contains('host_daemon')) return;
-      // ignore: avoid_print
-      print('[orchestrator] killing stale daemon pid=$oldPid');
+      _log('[orchestrator] killing stale daemon pid=$oldPid');
       try {
         Process.killPid(oldPid, ProcessSignal.sigterm);
       } catch (_) {}
@@ -256,8 +330,7 @@ class DaemonOrchestrator {
         return;
       }
 
-      // ignore: avoid_print
-      print('[orchestrator] local network prompt attempt');
+      _log('[orchestrator] local network prompt attempt');
       final ifaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLoopback: false,
@@ -313,5 +386,14 @@ class DaemonOrchestrator {
     await registry.dispose();
     _ipReporter = null;
     _relayService = null;
+  }
+
+  Future<void> _startRelayService() async {
+    try {
+      await _relayService?.start();
+      _log('[orchestrator] Relay signaling service started');
+    } catch (e) {
+      _log('[orchestrator] Relay service start failed: $e');
+    }
   }
 }
